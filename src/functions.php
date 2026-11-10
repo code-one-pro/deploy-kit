@@ -28,3 +28,18 @@ function artisan(string $command): string
         (string) \Deployer\get('bin/php'),
     );
 }
+
+/**
+ * Migration names in `migrate:status --pending` output.
+ *
+ * Accepts bare names one per line and Laravel's framed table, where a pending row looks like
+ * `  2026_01_01_000000_create_x_table .......... Pending`. Anything else yields no names.
+ *
+ * @return list<string>
+ */
+function pendingMigrationNames(string $output): array
+{
+    preg_match_all('/(?<![\w])(\d{4}_\d{2}_\d{2}_\d{6}_\w+)/', $output, $matches);
+
+    return array_values(array_unique($matches[1]));
+}

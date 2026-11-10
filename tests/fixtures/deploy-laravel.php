@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace Deployer;
 
-require __DIR__ . '/../../recipe/common.php';
+require __DIR__ . '/../../recipe/laravel.php';
 
 /** @return list<string>|null null when the variable is unset */
 function dkEnvList(string $name): ?array
@@ -24,16 +24,20 @@ if (($excludes = dkEnvList('DK_UPLOAD_EXCLUDES')) !== null) {
     set('dk_upload_excludes', $excludes);
 }
 
-localhost();
+if (($preflight = getenv('DK_PREFLIGHT')) !== false && $preflight !== '') {
+    set('dk_preflight_command', $preflight);
+}
+if (($seeders = dkEnvList('DK_SEEDERS')) !== null) {
+    set('dk_seeders', $seeders);
+}
 
-task('deploy', [
-    'deploy:info',
-    'deploy:setup',
-    'deploy:lock',
-    'deploy:release',
-    'dk:upload',
-    'deploy:shared',
-    'deploy:symlink',
-    'deploy:unlock',
-    'deploy:cleanup',
-]);
+// Deployer resolves these to absolute paths that may contain spaces on a workstation.
+set('bin/php', 'php');
+set('bin/composer', 'composer');
+
+// Upload tests that leave composer.json out of the release have nothing for composer to install.
+if (getenv('DK_NO_VENDORS') !== false) {
+    task('dk:vendors', function () {});
+}
+
+localhost();
