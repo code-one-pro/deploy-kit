@@ -17,8 +17,22 @@ set('dk_preflight_command', null);
 set('dk_seeders', []);
 set('dk_queue', true);
 set('dk_composer_options', '--no-dev --optimize-autoloader --no-interaction --no-progress');
+set('dk_storage_link', true);
 
 option('allow-breaking', null, InputOption::VALUE_NONE, 'Continue when pending migrations may break the running code.');
+
+/*
+ * Done as the SSH user, not through artisan: public/ belongs to `deploy`. The target may not exist yet;
+ * a link to the right place is still correct, and the app creates the directory on its first upload.
+ */
+desc('Link public/storage to the shared storage/app/public');
+task('dk:storage:link', function () {
+    if (! get('dk_storage_link')) {
+        return;
+    }
+    run('mkdir -p {{release_path}}/public');
+    run('ln -sfn {{deploy_path}}/shared/storage/app/public {{release_path}}/public/storage');
+});
 
 desc('Install composer dependencies in the release');
 task('dk:vendors', function () {
@@ -110,6 +124,7 @@ task('deploy', [
     'deploy:release',
     'dk:upload',
     'deploy:shared',
+    'dk:storage:link',
     'dk:vendors',
     'dk:handover',
     'dk:preflight',

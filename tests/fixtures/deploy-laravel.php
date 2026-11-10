@@ -31,6 +31,10 @@ if (($seeders = dkEnvList('DK_SEEDERS')) !== null) {
     set('dk_seeders', $seeders);
 }
 
+if (getenv('DK_STORAGE_LINK') === '0') {
+    set('dk_storage_link', false);
+}
+
 set('dk_health_url', 'file://{{deploy_path}}/current/public/up.txt');
 if (($socket = getenv('DK_FPM_SOCKET')) !== false && $socket !== '') {
     set('dk_fpm_socket', $socket);

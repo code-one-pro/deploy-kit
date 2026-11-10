@@ -111,13 +111,16 @@ Set them with `set('key', value)` in `deploy.php`.
 | `dk_preflight_command` | `null` | Artisan command run before migrations (Laravel only). |
 | `dk_seeders` | `[]` | Seeder classes run after `migrate` (Laravel only). |
 | `dk_composer_options` | `--no-dev --optimize-autoloader --no-interaction --no-progress` | Options for `composer install` (Laravel only). |
+| `dk_storage_link` | `true` (Laravel) | Link `public/storage` in each release to `<base>/shared/storage/app/public`, as `storage:link` would. |
 | `dk_assets_dir` | `assets` | Directory of hashed assets to carry over (static only). |
 | `keep_releases` | `5` | Releases kept on the server. |
 | `shared_dirs` | `['storage']` (Laravel), `[]` (static) | Directories shared between releases. |
 | `shared_files` | `['.env']` (Laravel), `[]` (static) | Files shared between releases. |
 
 These are never uploaded, whatever you set: `/.env`, `/.env.*`, `/storage/`, `/vendor/`,
-`/node_modules/`, `/.git/`, `/bootstrap/cache/*`.
+`/node_modules/`, `/.git/`, `/bootstrap/cache/*`, `/public/hot` (the Vite dev-server marker),
+`/public/storage` (a link to a workstation path; the kit makes its own, see below),
+`/database/*.sqlite` and `/database/*.sqlite-*` (local SQLite files).
 
 ## Task order
 
@@ -125,7 +128,7 @@ Laravel (`dep deploy`):
 
 ```
 deploy:info, deploy:setup, deploy:lock, deploy:release, dk:upload, deploy:shared,
-dk:vendors, dk:handover, dk:preflight, dk:migrations:check, dk:migrate, dk:seed, dk:cache,
+dk:storage:link, dk:vendors, dk:handover, dk:preflight, dk:migrations:check, dk:migrate, dk:seed, dk:cache,
 deploy:symlink, dk:queue:restart, dk:health, dk:release:mark-live, dk:opcache:clear,
 deploy:unlock, deploy:cleanup
 ```

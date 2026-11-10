@@ -58,6 +58,59 @@ final class LaravelRecipeTest extends DeployTestCase
         $this->assertStringNotContainsString('topsecret', (string) @file_get_contents($this->basePath() . '/shared/.env'));
     }
 
+    public function test_whole_tree_upload_never_carries_secrets_or_local_state(): void
+    {
+        $src = $this->sourcePath();
+        file_put_contents($src . '/.env', "APP_KEY=base64:topsecret\n");
+        file_put_contents($src . '/.env.e2e', "E2E=1\n");
+        $files = [
+            'storage/x', 'node_modules/x', '.git/HEAD', 'vendor/x', 'bootstrap/cache/config.php',
+            'public/hot', 'database/database.sqlite', 'database/database.sqlite-journal',
+        ];
+        foreach ($files as $file) {
+            @mkdir(dirname($src . '/' . $file), 0755, true);
+            file_put_contents($src . '/' . $file, 'local');
+        }
+
+        $result = $this->deploy(self::RECIPE, ['DK_NO_VENDORS' => '1']);
+        $this->assertSame(0, $result['exit'], $result['output']);
+
+        $release = $this->release();
+        foreach (['.env.e2e', 'node_modules', '.git', 'vendor', 'bootstrap/cache/config.php', 'public/hot', 'database/database.sqlite', 'database/database.sqlite-journal'] as $entry) {
+            $this->assertFalse(file_exists($release . '/' . $entry) || is_link($release . '/' . $entry), $entry . ' was uploaded');
+        }
+        $this->assertFileDoesNotExist($this->basePath() . '/shared/storage/x');
+        $this->assertStringNotContainsString('topsecret', (string) @file_get_contents($this->basePath() . '/shared/.env'));
+        $this->assertFileExists($release . '/artisan');
+    }
+
+    public function test_public_storage_links_into_shared_and_the_local_link_is_not_uploaded(): void
+    {
+        $elsewhere = $this->sourcePath() . '/elsewhere';
+        mkdir($elsewhere);
+        symlink($elsewhere, $this->sourcePath() . '/public/storage');
+
+        $result = $this->deploy(self::RECIPE, ['DK_NO_VENDORS' => '1']);
+        $this->assertSame(0, $result['exit'], $result['output']);
+
+        $link = $this->release() . '/public/storage';
+        $this->assertTrue(is_link($link), 'public/storage is not a link');
+        $this->assertSame($this->basePath() . '/shared/storage/app/public', readlink($link));
+    }
+
+    public function test_local_public_storage_link_is_not_uploaded_even_without_the_link_step(): void
+    {
+        $elsewhere = $this->sourcePath() . '/elsewhere';
+        mkdir($elsewhere);
+        symlink($elsewhere, $this->sourcePath() . '/public/storage');
+
+        $result = $this->deploy(self::RECIPE, ['DK_NO_VENDORS' => '1', 'DK_STORAGE_LINK' => '0']);
+        $this->assertSame(0, $result['exit'], $result['output']);
+
+        $link = $this->release() . '/public/storage';
+        $this->assertFalse(file_exists($link) || is_link($link), 'the workstation link was uploaded');
+    }
+
     public function test_allowlist_limits_upload(): void
     {
         mkdir($this->sourcePath() . '/docs');

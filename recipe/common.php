@@ -20,6 +20,10 @@ const DK_FIXED_EXCLUDES = [
     '/node_modules/',
     '/.git/',
     '/bootstrap/cache/*',
+    '/public/hot',
+    '/public/storage',
+    '/database/*.sqlite',
+    '/database/*.sqlite-*',
 ];
 
 set('dk_source_path', null);
