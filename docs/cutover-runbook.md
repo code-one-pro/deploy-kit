@@ -34,6 +34,10 @@ sudo supervisorctl status
 systemctl list-units --type=service --no-legend | grep -i '<app>'
 ls /etc/cron.d
 php8.4 -v
+umask
+sudo -u <app-user> sh -c umask
+id deploy
+getent group <app-user>
 ```
 
 Check:
@@ -44,6 +48,10 @@ Check:
   app has them, are owned by `<app-user>` with mode 600 (or 660 with an ACL: never run `chmod 600`
   on a key that has an ACL).
 - The pool file `/etc/php/8.4/fpm/pool.d/<app-user>.conf` has the `listen` socket you wrote down.
+- Write down both umask values (for example `0002` or `0022`) and whether `deploy` is a member of the
+  `<app-user>` group (`id deploy` lists it, or `getent group <app-user>` names `deploy`). Later steps
+  depend on them: who can read files the other account creates (the cached config, the logs), and
+  whether `deploy` can read `bootstrap/cache` when it removes an old release.
 
 Back out: nothing has changed yet.
 
@@ -101,6 +109,7 @@ Back out: `sudo rm /usr/local/bin/dk-scheduler-run`.
 
 ```
 <base>/shared/storage/logs/scheduler.log {
+    su <app-user> <app-user>
     weekly
     rotate 8
     compress
@@ -112,10 +121,12 @@ Back out: `sudo rm /usr/local/bin/dk-scheduler-run`.
 ```
 
 `copytruncate` is used because cron opens the log again every minute, and the file belongs to
-`<app-user>`.
+`<app-user>`. `su <app-user> <app-user>` is required: the log directory is writable by a group other
+than root, and logrotate refuses to rotate there without it.
 
 Check: `sudo logrotate --debug /etc/logrotate.d/<short-name>-scheduler` prints no error. (It may say the
-file does not exist yet. That is fine: `missingok` is set.)
+file does not exist yet. That is fine: `missingok` is set. Run the same check again after step 7, when
+the log exists.)
 
 Back out: `sudo rm /etc/logrotate.d/<short-name>-scheduler`.
 
@@ -212,8 +223,18 @@ ssh deploy-hetzner 'stat -c "%U:%G %a" <base>/current/.env <base>/current/storag
 - Artisan runs as `<app-user>`.
 - Do not run a second deploy yet.
 
-Back out: `rm <base>/current; sudo rm -rf <base>/releases/*` (the live tree is untouched). The
-`.dep/` directory can stay.
+Back out (the live tree is untouched; the `.dep/` directory can stay). Each release's `bootstrap/cache`
+belongs to `<app-user>`, so empty it as that account first, then remove the release as `deploy`:
+
+```
+rm <base>/current
+for r in <base>/releases/*/; do
+    sudo -u <app-user> find "$r"bootstrap/cache -mindepth 1 -delete
+    rm -rf "$r"
+done
+```
+
+For a static site there is no `bootstrap/cache` and no app account: `rm -rf <base>/releases/*` is enough.
 
 ## Step 5. Point Caddy at `current`
 
@@ -240,6 +261,12 @@ curl -fsS -o /dev/null -w '%{http_code}\n' https://<domain><health-path>
   through `caddy validate` when it was written. Every line must match:
   - Marker files and any dotfile answer 404:
     `for p in /BAD_RELEASE /bad_release /.dk_live /.dk-own-assets /.anything; do curl -s -o /dev/null -w "$p %{http_code}\n" https://<domain>$p; done`
+    Expected, line by line: `/BAD_RELEASE 404` (its own matcher), `/bad_release 200` (no such file:
+    the SPA's index.html, through `try_files`), `/.dk_live 404`, `/.dk-own-assets 404`, `/.anything 404`
+    (the dotfile rule).
+  - Optional: a path that climbs out of `/.well-known/` is still blocked:
+    `curl -s -o /dev/null -w '%{http_code}\n' --path-as-is https://<domain>/.well-known/../.dk_live`
+    expect `404`.
   - `/.well-known/` is not blocked by the dotfile rule. The status can be 200 or the SPA's own answer,
     but the body must not be the empty 404 of the rule:
     `curl -si https://<domain>/.well-known/x | head -n 12`
@@ -384,6 +411,14 @@ Prove each of these on this app before you delete anything:
    go forward.
 4. A queued job in progress survives a deploy.
 5. The scheduler ran across a deploy: the heartbeat (`<base>/shared/storage/scheduler.heartbeat`) kept moving.
+   Skip this for an app with no scheduled tasks (step 7 was skipped).
+6. Old releases are removed with two accounts: once five releases exist, a sixth deploy exits 0 and
+   `ls <base>/releases` lists five.
+7. Compiled views belong to each release. Run `ls <base>/shared/storage/framework/views | wc -l`
+   before and after a deploy: the count does not grow. Then change the markup of one Blade page, deploy,
+   see the new markup, run `dep rollback`, and see the OLD markup again.
+8. Uploaded files are served: a `storage/` image URL of the app (`https://<domain>/storage/<file>`)
+   answers 200.
 
 Then move the old tree aside. Leave it for some days. Delete it only when nothing needed it.
 
@@ -424,6 +459,8 @@ Copy this for each app.
 | Health URL | |
 | Files that name the old path (backup config, units, sudoers, polkit, logrotate) | |
 | Passport keys (yes/no, mode) | |
+| umask of `deploy` and of `<app-user>` | |
+| `deploy` in the `<app-user>` group (yes/no) | |
 | Has scheduled tasks (yes/no) | |
 | Local gates kept in the app's own script | |
 | Preflight command, seeders | |
@@ -448,6 +485,8 @@ step 1 before you rely on it.
 | Health URL | `/up` on the domain; confirm it answers 200 and is routed to the app in the Caddyfile |
 | Files that name the old path | Caddyfile site block (`root`); `/etc/supervisor/conf.d/openbrain-worker.conf` (`command`, `directory`, `stdout_logfile`); backup config `/home/deploy/backups/conf.d/openbrain.conf` (reads `.env` at the base path: change to `<base>/shared/.env`); confirm sudoers, polkit and logrotate files |
 | Passport keys | confirm (yes or no, and their mode) |
+| umask of `deploy` and of `app-openbrain` | confirm in step 1 |
+| `deploy` in the `app-openbrain` group | confirm in step 1 |
 | Has scheduled tasks | confirm with `schedule:list`; if none, skip step 7 |
 | Base path owner and mode | confirm `deploy`, 755 |
 | `.env` owner and mode | confirm `deploy:app-openbrain`, 640 |

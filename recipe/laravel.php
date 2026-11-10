@@ -173,7 +173,7 @@ task('deploy', [
     'dk:upload',
     'deploy:shared',
     'dk:storage:link',
-    'dk:vendors',
+    'dk:vendors',   // must stay before dk:handover: composer writes bootstrap/cache (packages.php, services.php) as deploy
     'dk:handover',
     'dk:preflight',
     'dk:migrations:check',

@@ -28,7 +28,8 @@
 # ---------------------------------------------------------------------------------------------
 # 2. Static SPA
 # ---------------------------------------------------------------------------------------------
-# The kit puts marker files in the web root: BAD_RELEASE (it holds the SSH user name), .dk_live
+# The kit puts marker files in the web root: BAD_RELEASE (it holds a timestamp and Deployer's `user`
+# value, which is the local git user name of whoever deployed, not the SSH user), .dk_live
 # and .dk-own-assets. Every dotfile answers 404, except /.well-known/*, which a site may need
 # (security.txt, assetlinks.json, apple-app-site-association). BAD_RELEASE has its own matcher.
 #

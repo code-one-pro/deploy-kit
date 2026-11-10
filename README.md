@@ -256,6 +256,10 @@ A healthy scheduler writes a new heartbeat every minute. Its output is in
 - **`curl` on the server.** A host without `curl` fails the health check and triggers a rollback.
 - **Your own failure handler.** A project that calls `fail('deploy', ...)` itself replaces the kit's
   failure handler. It must remove the deploy lock on its own.
+- **Ctrl-C during a deploy** leaves the deploy lock in place. Remove it with
+  `vendor/bin/dep deploy:unlock` once you are sure no other deploy is running.
+- **Build before you deploy.** The app's build output (`public/build` for Vite) is uploaded as part of
+  the release; the server never builds. Run the build on the workstation first.
 - **Empty upload list.** `dk_upload_paths = []` uploads nothing. Use `null` to upload the whole tree.
 - **Opcache.** The opcache clear affects every PHP app on the server, because they all share one
   PHP-FPM service. It causes a brief slowdown. No request is dropped.
