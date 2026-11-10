@@ -88,6 +88,12 @@ task('dk:migrations:check', function () {
     // run() reports no exit status when nothrow is set, so the command appends its own.
     $output = run(artisan('migrate:status --pending') . '; echo "__DK_EXIT:$?"', nothrow: true);
     if (preg_match('/__DK_EXIT:(\d+)\s*$/', $output, $m) !== 1 || $m[1] !== '0') {
+        // Only a first deploy is expected to have no migrations table; with a live release, stop.
+        if (test('[ -e {{current_path}} ]') && ! input()->getOption('allow-breaking')) {
+            throw new \RuntimeException('`migrate:status --pending` failed, so the pending migrations could not be checked. '
+                . 'Likely causes: sudo (the SSH user may not run artisan as the app account) or the database '
+                . '(unreachable, wrong credentials). Fix it, or re-run with --allow-breaking to deploy without the check.');
+        }
         warning('The migration check was SKIPPED: `migrate:status --pending` failed (a first deploy has no migrations table yet; a sudo or database error can also cause it). Migrations will still run.');
 
         return;
@@ -127,6 +133,7 @@ task('dk:migrations:check', function () {
 desc('Run database migrations');
 task('dk:migrate', function () {
     run(artisan('migrate --force'), forceOutput: true);
+    set('dk_migrated', true); // read by the failure handler: the schema has moved
 });
 
 desc('Run the configured seeders');

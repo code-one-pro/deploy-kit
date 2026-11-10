@@ -214,8 +214,13 @@ What it does NOT detect:
 - Without a terminal it stops the deploy.
 - To deploy anyway, pass the option: `dep deploy --allow-breaking`.
 
-If `migrate:status` itself fails (a first deploy has no migrations table), the check is skipped with
-a warning and `migrate` still runs.
+If `migrate:status` itself fails on a first deploy (no `current` yet, so no migrations table is
+expected), the check is skipped with a warning and `migrate` still runs. When a release is already
+live, the same failure stops the deploy before the switch: it usually means sudo or the database is
+broken. `--allow-breaking` turns that stop into the warning.
+
+When a deploy fails before the switch after `migrate` ran, the output ends with a `NOTE` that the
+database schema is ahead of the live release.
 
 ## Pause the scheduler
 

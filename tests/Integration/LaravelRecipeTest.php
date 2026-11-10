@@ -302,7 +302,53 @@ PHP);
         $this->assertContains('migrate --force', $this->artisanLog());
     }
 
-    public function test_failing_pending_check_warns_and_continues(): void
+    public function test_failing_pending_check_stops_when_a_release_is_live(): void
+    {
+        $this->assertSame(0, $this->deploy(self::RECIPE)['exit']);
+        $before = readlink($this->basePath() . '/current');
+
+        $result = $this->deploy(self::RECIPE, ['DK_FAIL_ON' => 'migrate:status']);
+        $this->assertNotSame(0, $result['exit']);
+        foreach (['migrate:status --pending', 'sudo', 'database', '--allow-breaking'] as $part) {
+            $this->assertStringContainsString($part, $result['output']);
+        }
+        $this->assertSame($before, readlink($this->basePath() . '/current'));
+        $this->assertSame(1, count(array_keys($this->artisanLog(), 'migrate --force', true)));
+        $this->assertFileDoesNotExist($this->basePath() . '/.dep/deploy.lock');
+    }
+
+    public function test_failing_pending_check_with_allow_breaking_warns_and_continues(): void
+    {
+        $this->assertSame(0, $this->deploy(self::RECIPE)['exit']);
+
+        $result = $this->deploy(self::RECIPE, ['DK_FAIL_ON' => 'migrate:status'], ['--allow-breaking']);
+        $this->assertSame(0, $result['exit'], $result['output']);
+        $this->assertStringContainsString('migration check was SKIPPED', $result['output']);
+        $this->assertSame(2, count(array_keys($this->artisanLog(), 'migrate --force', true)));
+    }
+
+    public function test_failure_after_migrate_says_the_schema_moved(): void
+    {
+        $this->assertSame(0, $this->deploy(self::RECIPE)['exit']);
+
+        $result = $this->deploy(self::RECIPE, ['DK_FAIL_ON' => 'route:cache']);
+        $this->assertNotSame(0, $result['exit']);
+        $this->assertStringContainsString(
+            'NOTE: migrations already ran. The database schema is ahead of the live release; the live code keeps working only if those migrations were additive.',
+            $result['output'],
+        );
+    }
+
+    public function test_failure_before_migrate_says_nothing_about_the_schema(): void
+    {
+        $this->assertSame(0, $this->deploy(self::RECIPE)['exit']);
+
+        $result = $this->deploy(self::RECIPE, ['DK_FAIL_ON' => 'migrate']);
+        $this->assertNotSame(0, $result['exit']);
+        $this->assertStringNotContainsString('NOTE: migrations already ran', $result['output']);
+    }
+
+    public function test_failing_pending_check_on_a_first_deploy_warns_and_continues(): void
     {
         $result = $this->deploy(self::RECIPE, ['DK_FAIL_ON' => 'migrate:status']);
         $this->assertSame(0, $result['exit'], $result['output']);
@@ -458,6 +504,29 @@ PHP);
         $third = $this->deploy(self::RECIPE);
         $this->assertSame(0, $third['exit'], $third['output']);
         $this->assertNotSame($first, $this->currentTarget(), $third['output']);
+    }
+
+    public function test_failing_queue_restart_after_the_switch_lets_health_decide(): void
+    {
+        $result = $this->deploy(self::RECIPE, ['DK_FAIL_ON' => 'queue:restart']);
+        $this->assertSame(0, $result['exit'], $result['output']);
+        $this->assertStringContainsString('queue restart failed', $result['output']);
+        $this->assertFileExists($this->release() . '/.dk_live');
+    }
+
+    public function test_failing_queue_restart_does_not_hide_the_rollback(): void
+    {
+        $this->assertSame(0, $this->deploy(self::RECIPE)['exit']);
+        $first = basename((string) $this->currentTarget());
+
+        unlink($this->sourcePath() . '/public/up.txt');
+        $failed = $this->deploy(self::RECIPE, ['DK_FAIL_ON' => 'queue:restart']);
+        $this->assertNotSame(0, $failed['exit']);
+        $rolled = strpos($failed['output'], 'ROLLED BACK to ' . $first . ': health check failed');
+        $this->assertNotFalse($rolled, $failed['output']);
+        $warning = strpos($failed['output'], 'queue restart after the rollback failed', $rolled);
+        $this->assertNotFalse($warning, 'the restart warning follows the outcome: ' . $failed['output']);
+        $this->assertSame(realpath($this->basePath() . '/releases/' . $first), $this->currentTarget());
     }
 
     public function test_bad_release_is_not_a_later_rollback_target(): void

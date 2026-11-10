@@ -100,9 +100,15 @@ task('dk:release:mark-live', function () {
 
 desc('Ask queue workers to restart after the current job');
 task('dk:queue:restart', function () {
-    if (get('dk_queue')) {
-        // From `current`: after a rollback there is no release_path, and after the switch both are the same code.
+    if (! get('dk_queue')) {
+        return;
+    }
+    // From `current`: after a rollback there is no release_path, and after the switch both are the same code.
+    // A failure only warns: right after the switch the health check must still run and decide.
+    try {
         run(currentArtisan('queue:restart'));
+    } catch (\Throwable $e) {
+        warning('The queue restart failed; workers may keep running the previous code until they restart: ' . $e->getMessage());
     }
 });
 
@@ -128,11 +134,23 @@ task('dk:health', function () {
 
     run("{{bin/symlink}} releases/$previous {{current_path}}");
     run("echo '" . timestamp() . ",{{user}}' > releases/$bad/BAD_RELEASE");
+    $restartError = null;
     if (get('dk_queue')) {
-        run(currentArtisan('queue:restart'));
+        try {
+            run(currentArtisan('queue:restart'));
+        } catch (\Throwable $e) {
+            $restartError = $e->getMessage();
+        }
     }
 
-    throw new \RuntimeException("ROLLED BACK to $previous: health check failed");
+    // The outcome first, whatever happened to the queue restart.
+    $outcome = "ROLLED BACK to $previous: health check failed";
+    writeln($outcome);
+    if ($restartError !== null) {
+        warning('The queue restart after the rollback failed; workers may keep running the bad release until they restart: ' . $restartError);
+    }
+
+    throw new \RuntimeException($outcome);
 });
 
 desc('Clear the PHP-FPM opcache after a passing health check');
@@ -233,6 +251,14 @@ task('dk:lock:forget', function () {
 });
 after('deploy:unlock', 'dk:lock:forget');
 fail('deploy', function () {
+    // Before the switch (the `release` link still exists) after migrate ran: the live code meets a newer schema.
+    try {
+        if (has('dk_migrated') && get('dk_migrated') && test('[ -h {{deploy_path}}/release ]')) {
+            writeln('NOTE: migrations already ran. The database schema is ahead of the live release; the live code keeps working only if those migrations were additive.');
+        }
+    } catch (\Throwable) {
+        // Best effort; the lock must still be released.
+    }
     if (has('dk_locked') && get('dk_locked')) {
         // A release still linked as `release` never reached the switch: it is not a rollback target.
         try {
