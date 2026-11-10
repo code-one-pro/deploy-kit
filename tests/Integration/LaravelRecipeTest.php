@@ -529,6 +529,30 @@ PHP);
         $this->assertSame(realpath($this->basePath() . '/releases/' . $first), $this->currentTarget());
     }
 
+    public function test_health_check_retries_and_reports_without_the_query(): void
+    {
+        $this->assertSame(0, $this->deploy(self::RECIPE)['exit']);
+
+        $url = 'file://' . $this->basePath() . '/nowhere.txt?token=secret';
+        $failed = $this->deploy(self::RECIPE, ['DK_HEALTH_URL' => $url, 'DK_HEALTH_ATTEMPTS' => '3']);
+        $this->assertNotSame(0, $failed['exit']);
+        $this->assertStringContainsString('Health check failed for file://' . $this->basePath() . '/nowhere.txt after 3 attempts (last curl exit', $failed['output']);
+        $this->assertStringNotContainsString('secret', $failed['output']);
+    }
+
+    public function test_health_check_passes_on_a_later_attempt(): void
+    {
+        $flag = $this->basePath() . '/late.txt';
+        $result = $this->deploy(self::RECIPE, [
+            'DK_HEALTH_URL' => 'file://' . $flag,
+            'DK_HEALTH_ATTEMPTS' => '5',
+            'DK_HEALTH_DELAY' => '1',
+            'DK_HEALTH_LATE_FLAG' => $flag,
+        ]);
+        $this->assertSame(0, $result['exit'], $result['output']);
+        $this->assertStringNotContainsString('ROLLED BACK', $result['output']);
+    }
+
     public function test_bad_release_is_not_a_later_rollback_target(): void
     {
         $this->assertSame(0, $this->deploy(self::RECIPE)['exit']);

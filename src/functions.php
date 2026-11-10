@@ -85,18 +85,48 @@ function currentArtisan(string $command): string
 
 /**
  * The curl probe for the health URL. The body is discarded, never printed. For an https URL with
- * $resolveLocal the host is pinned to 127.0.0.1 (skipping DNS and the proxy; -k as the certificate
- * may not match). Other schemes are fetched as they are.
+ * $resolveLocal the host is pinned to 127.0.0.1 on the URL's port (443 unless the URL names one),
+ * skipping DNS and the proxy; -k as the certificate may not match. Other schemes are fetched as they are.
  */
 function healthCommand(string $url, bool $resolveLocal): string
 {
     $line = 'curl -fsS --max-time 20 -o /dev/null';
     $host = parse_url($url, PHP_URL_HOST);
     if ($resolveLocal && str_starts_with(strtolower($url), 'https://') && is_string($host) && $host !== '') {
-        $line .= ' --resolve ' . $host . ':443:127.0.0.1 -k';
+        $port = parse_url($url, PHP_URL_PORT) ?? 443;
+        $line .= ' --resolve ' . escapeshellarg($host . ':' . $port . ':127.0.0.1') . ' -k';
     }
 
     return $line . ' ' . escapeshellarg($url);
+}
+
+/** The health URL as it may be printed: scheme, host and path only (no credentials, port, query or fragment). */
+function healthUrlForDisplay(string $url): string
+{
+    $parts = parse_url($url);
+    if ($parts === false) {
+        return '(unparsable URL)';
+    }
+
+    return ($parts['scheme'] ?? '') . '://' . ($parts['host'] ?? '') . ($parts['path'] ?? '');
+}
+
+/**
+ * Shell commands pointing `current` at releases/<release>. With $atomic (mv supports -T) a temporary link
+ * is renamed over `current`, the way deploy:symlink switches; otherwise Deployer's {{bin/symlink}} form.
+ *
+ * @return list<string>
+ */
+function rollbackSwitchCommands(string $deployPath, string $currentPath, string $release, bool $atomic): array
+{
+    $target = escapeshellarg('releases/' . $release);
+    $cd = 'cd ' . escapeshellarg($deployPath) . ' && ';
+    if (! $atomic) {
+        return [$cd . '{{bin/symlink}} ' . $target . ' ' . escapeshellarg($currentPath)];
+    }
+    $tmp = escapeshellarg($currentPath . '.dk_tmp');
+
+    return [$cd . 'ln -sfn ' . $target . ' ' . $tmp . ' && mv -T ' . $tmp . ' ' . escapeshellarg($currentPath)];
 }
 
 /** The artisan arguments running one seeder; the class is quoted so `Database\Seeders\X` survives the shell. */

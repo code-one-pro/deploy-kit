@@ -29,7 +29,9 @@ Each app has this layout on the server:
 
 A deploy builds a new release next to the live one and then switches the `current` link in one
 step. If a step before the switch fails, the live site is not touched. If the health check fails
-after the switch, the kit puts the previous release back.
+after the switch, the kit puts the previous release back, switching `current` atomically where `mv -T`
+exists (a temporary link renamed over it, as Deployer's own switch does). A failed check prints only the
+URL's scheme, host and path and the last curl exit status, never the response body.
 
 ## Install
 
@@ -104,7 +106,9 @@ Set them with `set('key', value)` in `deploy.php`.
 | `dk_upload_excludes` | `[]` | Extra rsync exclude patterns. |
 | `dk_app_user` | `null` | System account of the app. Artisan commands run as this account with `sudo -u`, and `bootstrap/cache` is handed to it. |
 | `dk_health_url` | `null` | URL to check after the switch. `null` skips the check. |
-| `dk_health_resolve_local` | `true` | For an https URL, pin the host to `127.0.0.1:443` (no DNS, no proxy). |
+| `dk_health_resolve_local` | `true` | For an https URL, pin the host to `127.0.0.1` on the URL's port, 443 by default (no DNS, no proxy). |
+| `dk_health_attempts` | `3` | Probes before the health check fails; it passes on the first success. |
+| `dk_health_delay` | `2` | Seconds between two probes. |
 | `dk_fpm_socket` | `null` | PHP-FPM socket of the app. `null` skips the opcache clear. |
 | `dk_cachetool` | `/usr/local/bin/cachetool` | Path of the cachetool binary on the server. |
 | `dk_queue` | `false` in `common.php`; `true` in the `laravel` recipe | Run `queue:restart` after the switch. |

@@ -7,6 +7,8 @@ namespace Deployer;
 use function DeployKit\cachetoolCommand;
 use function DeployKit\currentArtisan;
 use function DeployKit\healthCommand;
+use function DeployKit\healthUrlForDisplay;
+use function DeployKit\rollbackSwitchCommands;
 use function DeployKit\releasePathFor;
 use function DeployKit\releasesToRemove;
 
@@ -36,6 +38,8 @@ set('dk_upload_excludes', []);
 set('dk_app_user', null);
 set('dk_health_url', null);
 set('dk_health_resolve_local', true);
+set('dk_health_attempts', 3);
+set('dk_health_delay', 2);
 set('dk_fpm_socket', null);
 set('dk_queue', false);
 set('dk_cachetool', '/usr/local/bin/cachetool');
@@ -118,12 +122,24 @@ task('dk:health', function () {
     if (! is_string($url) || $url === '') {
         return;
     }
-    $probe = healthCommand($url, (bool) get('dk_health_resolve_local'));
-    if (test($probe)) {
-        return;
+    // run() reports no exit status when nothrow is set, so the command appends its own.
+    $probe = healthCommand($url, (bool) get('dk_health_resolve_local')) . '; echo "__DK_EXIT:$?"';
+    $attempts = max(1, (int) get('dk_health_attempts'));
+    $delay = max(0, (int) get('dk_health_delay'));
+    $exit = '?';
+    for ($attempt = 1; $attempt <= $attempts; $attempt++) {
+        if ($attempt > 1 && $delay > 0) {
+            sleep($delay);
+        }
+        $output = run($probe, nothrow: true);
+        $exit = preg_match('/__DK_EXIT:(\d+)\s*$/', $output, $m) === 1 ? $m[1] : '?';
+        if ($exit === '0') {
+            return;
+        }
     }
 
-    writeln('Health check failed for ' . $url);
+    // Never the body, the query string or credentials.
+    writeln('Health check failed for ' . healthUrlForDisplay($url) . " after $attempts attempts (last curl exit $exit)");
     cd('{{deploy_path}}');
     $bad = basename(run('readlink {{current_path}}'));
     try {
@@ -132,7 +148,9 @@ task('dk:health', function () {
         throw new \RuntimeException('Health check failed and there is no previous release to roll back to');
     }
 
-    run("{{bin/symlink}} releases/$previous {{current_path}}");
+    foreach (rollbackSwitchCommands((string) get('deploy_path'), (string) get('current_path'), (string) $previous, (bool) get('use_atomic_symlink')) as $command) {
+        run($command);
+    }
     run("echo '" . timestamp() . ",{{user}}' > releases/$bad/BAD_RELEASE");
     $restartError = null;
     if (get('dk_queue')) {

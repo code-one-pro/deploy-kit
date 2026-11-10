@@ -40,7 +40,16 @@ if (getenv('DK_STORAGE_LINK') === '0') {
     set('dk_storage_link', false);
 }
 
-set('dk_health_url', 'file://{{deploy_path}}/current/public/up.txt');
+set('dk_health_url', getenv('DK_HEALTH_URL') ?: 'file://{{deploy_path}}/current/public/up.txt');
+set('dk_health_attempts', (int) (getenv('DK_HEALTH_ATTEMPTS') ?: 3));
+set('dk_health_delay', (int) (getenv('DK_HEALTH_DELAY') ?: 0));
+if (($late = getenv('DK_HEALTH_LATE_FLAG')) !== false && $late !== '') {
+    // The app answers only a moment after the switch: the first probe fails, a later one passes.
+    task('fixture:answer-late', function () use ($late) {
+        run('(sleep 1; touch ' . escapeshellarg($late) . ') > /dev/null 2>&1 &');
+    });
+    before('dk:health', 'fixture:answer-late');
+}
 if (($socket = getenv('DK_FPM_SOCKET')) !== false && $socket !== '') {
     set('dk_fpm_socket', $socket);
 }
