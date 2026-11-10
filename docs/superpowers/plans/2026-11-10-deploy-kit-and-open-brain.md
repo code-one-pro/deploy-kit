@@ -215,6 +215,15 @@ tests/fixtures/deploy-laravel.php, tests/fixtures/deploy-static.php
 - [ ] **Step 5:** Write `README.md`: install (Composer VCS repository + `require --dev`; global install for static sites), every `dk_*` key with default, the task order, `dep rollback`, the migration rule and `--allow-breaking`, pausing the scheduler.
 - [ ] **Step 6:** Commit: `docs: templates, cutover runbook, readme`.
 
+> **Changes made while building Tasks 1 to 7 (2026-11-10). Where the text of Tasks 8 to 11 below disagrees, these win, and `docs/cutover-runbook.md` is the procedure to follow:**
+> - The scheduler heartbeat and pause flag are in `shared/storage/` (`scheduler.heartbeat`, `scheduler.paused`), not in `shared/`.
+> - The cron file is named with a dot-free short name: `/etc/cron.d/openbrain-scheduler`.
+> - Compiled Blade views are per release (`bootstrap/cache/views`). Task 11 Step 3 is replaced by: after `dep rollback`, a changed Blade page shows the old markup, and `shared/storage/framework/views` gains no files across a deploy. Do not use the "skip `view:cache`" fallback.
+> - Task 8 Step 1 also checks `sudo -n -u app-openbrain env true` and `sudo -n -u app-openbrain find /dev/null -prune` (the kit runs `env` and `find` as the app account), the server's umask, and whether `deploy` is in the app account's group.
+> - Task 10 Step 3 uses `sudo mv` for `storage`; a deploy now stops if `shared/.env` or `shared/storage` is missing.
+> - Task 11 adds: a sixth deploy exits 0 and leaves five releases; a `storage/` image URL answers 200.
+> - A second deploy after the Caddy switch is needed before a rollback target exists (only releases that passed a health check under the kit are targets).
+
 ### Task 8: Open Brain: read the server (read-only, JL's go-ahead)
 
 **Files:**
