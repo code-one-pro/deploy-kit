@@ -1,0 +1,27 @@
+#!/usr/bin/env php
+<?php
+
+// Fake artisan for deploy-kit tests.
+$args = array_slice($argv, 1);
+
+$log = getenv('DK_FAKE_LOG');
+if ($log !== false && $log !== '') {
+    file_put_contents($log, implode(' ', $args) . PHP_EOL, FILE_APPEND);
+}
+
+$failOn = getenv('DK_FAIL_ON');
+if ($failOn !== false && $failOn !== '' && ($args[0] ?? null) === $failOn) {
+    fwrite(STDERR, "fake artisan: forced failure on {$failOn}\n");
+    exit(1);
+}
+
+if (($args[0] ?? null) === 'migrate:status' && in_array('--pending', $args, true)) {
+    $pending = getenv('DK_PENDING');
+    if ($pending !== false && $pending !== '') {
+        foreach (explode(',', $pending) as $name) {
+            echo trim($name), PHP_EOL;
+        }
+    }
+}
+
+exit(0);
