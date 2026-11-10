@@ -247,8 +247,10 @@ task('dk:cleanup', function () {
             continue; // never the release current resolves to
         }
         if ($user !== null && $user !== '') {
-            // The app account owns bootstrap/cache; deploy cannot empty it.
-            run("if [ -d $quoted/bootstrap/cache ]; then sudo -u " . escapeshellarg((string) $user) . " find $quoted/bootstrap/cache -mindepth 1 -delete; fi");
+            // The app account owns bootstrap/cache; deploy cannot empty it. `cd /` first: find exits 1
+            // when it cannot return to the directory it started in, and the app account may not enter
+            // the SSH user's home (seen on the server: /home/deploy is 750).
+            run("if [ -d $quoted/bootstrap/cache ]; then cd / && sudo -u " . escapeshellarg((string) $user) . " find $quoted/bootstrap/cache -mindepth 1 -delete; fi");
         }
         run("rm -rf $quoted");
     }
