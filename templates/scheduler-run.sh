@@ -2,7 +2,8 @@
 # deploy-kit scheduler runner. Called by cron once a minute, as the app account:
 #   dk-scheduler-run <base-path>
 # Does nothing when there is no release yet or when the pause flag exists.
-# After a successful run it writes the UTC time to <base>/shared/scheduler.heartbeat.
+# The heartbeat lives in shared/storage, which the app account owns.
+# After a successful run it writes the UTC time to <base>/shared/storage/scheduler.heartbeat.
 set -eu
 
 if [ "$#" -ne 1 ]; then
@@ -22,4 +23,4 @@ fi
 
 cd "$base/current"
 php artisan schedule:run
-date -u +%Y-%m-%dT%H:%M:%SZ > "$base/shared/scheduler.heartbeat"
+date -u +%Y-%m-%dT%H:%M:%SZ > "$base/shared/storage/scheduler.heartbeat"

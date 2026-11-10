@@ -1,4 +1,6 @@
-# /etc/cron.d/<app>-scheduler  (file mode 644, owner root, no dot in the file name)
+# /etc/cron.d/<short-name>-scheduler  (mode 644, owner root).
+# cron ignores any file in /etc/cron.d whose name contains a dot, so <short-name> uses only
+# letters, digits and hyphens: "openbrain", never "openbrain.pellicer.org".
 # Replace <app-user> and <base-path>. Install dk-scheduler-run first (see docs/cutover-runbook.md).
 SHELL=/bin/sh
 PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin

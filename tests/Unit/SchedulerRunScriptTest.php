@@ -18,7 +18,7 @@ final class SchedulerRunScriptTest extends TestCase
     protected function setUp(): void
     {
         $this->base = sys_get_temp_dir() . '/dk-sched-' . bin2hex(random_bytes(4));
-        mkdir($this->base . '/shared', 0777, true);
+        mkdir($this->base . '/shared/storage', 0777, true);
     }
 
     protected function tearDown(): void
@@ -55,7 +55,7 @@ final class SchedulerRunScriptTest extends TestCase
 
         $this->assertSame(0, $process->getExitCode());
         $this->assertSame([], $this->artisanLog());
-        $this->assertFileDoesNotExist($this->base . '/shared/scheduler.heartbeat');
+        $this->assertFileDoesNotExist($this->base . '/shared/storage/scheduler.heartbeat');
     }
 
     public function test_noop_when_paused(): void
@@ -67,7 +67,7 @@ final class SchedulerRunScriptTest extends TestCase
 
         $this->assertSame(0, $process->getExitCode());
         $this->assertSame([], $this->artisanLog());
-        $this->assertFileDoesNotExist($this->base . '/shared/scheduler.heartbeat');
+        $this->assertFileDoesNotExist($this->base . '/shared/storage/scheduler.heartbeat');
     }
 
     public function test_runs_and_writes_heartbeat(): void
@@ -78,7 +78,7 @@ final class SchedulerRunScriptTest extends TestCase
 
         $this->assertSame(0, $process->getExitCode(), $process->getErrorOutput());
         $this->assertSame(['schedule:run'], $this->artisanLog());
-        $heartbeat = trim((string) file_get_contents($this->base . '/shared/scheduler.heartbeat'));
+        $heartbeat = trim((string) file_get_contents($this->base . '/shared/storage/scheduler.heartbeat'));
         $this->assertMatchesRegularExpression('/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$/', $heartbeat);
     }
 
@@ -89,7 +89,7 @@ final class SchedulerRunScriptTest extends TestCase
         $process = $this->runScript([$this->base], ['DK_FAIL_ON' => 'schedule:run']);
 
         $this->assertNotSame(0, $process->getExitCode());
-        $this->assertFileDoesNotExist($this->base . '/shared/scheduler.heartbeat');
+        $this->assertFileDoesNotExist($this->base . '/shared/storage/scheduler.heartbeat');
     }
 
     public function test_usage_error_without_exactly_one_argument(): void

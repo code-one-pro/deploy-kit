@@ -181,7 +181,7 @@ The scheduler is cron plus `templates/scheduler-run.sh`. A deploy never restarts
 ```
 touch <base>/shared/scheduler.paused      # pause: the next run does nothing
 rm <base>/shared/scheduler.paused         # resume
-cat <base>/shared/scheduler.heartbeat     # UTC time of the last run that finished well
+cat <base>/shared/storage/scheduler.heartbeat    # UTC time of the last run that finished well
 ```
 
 A healthy scheduler writes a new heartbeat every minute. Its output is in

@@ -29,34 +29,45 @@
 # 2. Static SPA
 # ---------------------------------------------------------------------------------------------
 # The kit puts marker files in the web root: BAD_RELEASE (it holds the SSH user name), .dk_live
-# and .dk-own-assets. The @dotfiles and @marker matchers answer 404 for them and for any other
-# dotfile. They must stay before file_server.
+# and .dk-own-assets. Every dotfile answers 404, except /.well-known/*, which a site may need
+# (security.txt, assetlinks.json, apple-app-site-association). BAD_RELEASE has its own matcher.
+#
+# Why a route block: outside a route, Caddy runs directives in its own fixed order, and `header`
+# runs before `try_files`. Then @html would see /dashboard, not the index.html it is rewritten to,
+# and a deep link would be cached. Inside `route`, directives run exactly in the order written:
+# 404 rules first (on the real path), then try_files, then the header rules (on the final path),
+# then file_server.
 #
 # <domain> {
 #     root * <base>/current
 #     encode gzip
 #
-#     @dotfiles path_regexp dotfiles (^|/)\.
-#     @marker path /BAD_RELEASE
-#     respond @dotfiles 404
-#     respond @marker 404
+#     route {
+#         @dotfiles {
+#             path_regexp dotfiles (^|/)\.
+#             not path /.well-known/*
+#         }
+#         @marker path /BAD_RELEASE
+#         respond @dotfiles 404
+#         respond @marker 404
 #
-#     file_server
+#         # Client-side routing: unknown paths go to index.html
+#         try_files {path} /index.html
 #
-#     # Client-side routing: unknown paths go to index.html
-#     try_files {path} /index.html
+#         # Never cache the HTML entry point (also when it is served for a deep link)
+#         @html {
+#             path *.html /
+#         }
+#         header @html Cache-Control "no-cache, no-store, must-revalidate"
 #
-#     # Never cache the HTML entry point
-#     @html {
-#         path *.html /
+#         # Files with a content hash in the name never change
+#         @static {
+#             path *.js *.css *.png *.jpg *.jpeg *.gif *.svg *.ico *.woff *.woff2
+#         }
+#         header @static Cache-Control "public, max-age=31536000, immutable"
+#
+#         file_server
 #     }
-#     header @html Cache-Control "no-cache, no-store, must-revalidate"
-#
-#     # Files with a content hash in the name never change
-#     @static {
-#         path *.js *.css *.png *.jpg *.jpeg *.gif *.svg *.ico *.woff *.woff2
-#     }
-#     header @static Cache-Control "public, max-age=31536000, immutable"
 #
 #     log {
 #         output file /var/log/caddy/<domain>.log

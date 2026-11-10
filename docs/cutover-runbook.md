@@ -7,7 +7,8 @@ with the first normal deploy after it.
 
 ## How to read it
 
-- `<app>` is the app name. `<base>` is its base path on the server, for example `/var/www/<app>`.
+- `<app>` is the app name. `<short-name>` is a short name for file names: letters, digits and hyphens only, no dot (see step 7).
+- `<base>` is its base path on the server, for example `/var/www/<app>`.
 - `<app-user>` is the app's system account, for example `app-<name>`.
 - `<socket>` is its PHP-FPM socket, for example `/run/php/php8.4-fpm-app-<name>.sock`.
 - `<domain>` is the site's host name.
@@ -86,8 +87,9 @@ Back out: `sudo rm /usr/local/bin/cachetool`. Deploys then print a warning and s
 2b. `dk-scheduler-run`.
 
 ```
-scp templates/scheduler-run.sh deploy-hetzner:/tmp/dk-scheduler-run
-ssh deploy-hetzner 'sudo install -m 0755 -o root -g root /tmp/dk-scheduler-run /usr/local/bin/dk-scheduler-run && rm /tmp/dk-scheduler-run'
+tmp=$(ssh deploy-hetzner 'mktemp')
+scp templates/scheduler-run.sh deploy-hetzner:"$tmp"
+ssh deploy-hetzner "sudo install -m 0755 -o root -g root '$tmp' /usr/local/bin/dk-scheduler-run && rm '$tmp'"
 ```
 
 Check: `/usr/local/bin/dk-scheduler-run` with no argument prints a usage line and exits with
@@ -95,7 +97,7 @@ code 2 (`/usr/local/bin/dk-scheduler-run; echo $?`).
 
 Back out: `sudo rm /usr/local/bin/dk-scheduler-run`.
 
-2c. Log rotation for the scheduler log. Create `/etc/logrotate.d/<app>-scheduler`:
+2c. Log rotation for the scheduler log. Create `/etc/logrotate.d/<short-name>-scheduler`:
 
 ```
 <base>/shared/storage/logs/scheduler.log {
@@ -112,10 +114,10 @@ Back out: `sudo rm /usr/local/bin/dk-scheduler-run`.
 `copytruncate` is used because cron opens the log again every minute, and the file belongs to
 `<app-user>`.
 
-Check: `sudo logrotate --debug /etc/logrotate.d/<app>-scheduler` prints no error. (It may say the
+Check: `sudo logrotate --debug /etc/logrotate.d/<short-name>-scheduler` prints no error. (It may say the
 file does not exist yet. That is fine: `missingok` is set.)
 
-Back out: `sudo rm /etc/logrotate.d/<app>-scheduler`.
+Back out: `sudo rm /etc/logrotate.d/<short-name>-scheduler`.
 
 ## Step 3. Create `releases/` and `shared/`, move `.env` and `storage/`
 
@@ -154,7 +156,7 @@ cd <base>
 rm .env storage
 mv shared/.env .env
 mv shared/storage storage
-rmdir shared releases
+sudo rm -rf shared releases
 ```
 
 ## Step 4. Deploy the first release beside the live tree
@@ -180,7 +182,7 @@ ssh deploy-hetzner 'stat -c "%U:%G %a" <base>/current/.env <base>/current/storag
 - Artisan runs as `<app-user>`.
 - Do not run a second deploy yet.
 
-Back out: `rm <base>/current; rm -rf <base>/releases/*` (the live tree is untouched). The
+Back out: `rm <base>/current; sudo rm -rf <base>/releases/*` (the live tree is untouched). The
 `.dep/` directory can stay.
 
 ## Step 5. Point Caddy at `current`
@@ -204,8 +206,19 @@ curl -fsS -o /dev/null -w '%{http_code}\n' https://<domain><health-path>
 ```
 
 - It answers 200, and the page shows the new release.
-- A static site must answer 404 for `/BAD_RELEASE`, `/.dk_live` and `/.dk-own-assets`:
-  `for p in /BAD_RELEASE /.dk_live /.dk-own-assets /.anything; do curl -s -o /dev/null -w "$p %{http_code}\n" https://<domain>$p; done`
+- Static site only. These checks prove the Caddy rules, because the snippet could not be run
+  through `caddy validate` when it was written. Every line must match:
+  - Marker files and any dotfile answer 404:
+    `for p in /BAD_RELEASE /bad_release /.dk_live /.dk-own-assets /.anything; do curl -s -o /dev/null -w "$p %{http_code}\n" https://<domain>$p; done`
+  - `/.well-known/` is not blocked by the dotfile rule. The status can be 200 or the SPA's own answer,
+    but the body must not be the empty 404 of the rule:
+    `curl -si https://<domain>/.well-known/x | head -n 12`
+  - A deep SPA path returns the HTML with the no-cache header:
+    `curl -sI https://<domain>/some/deep/path | grep -i -e '^HTTP' -e '^cache-control'`
+    expect `200` and `Cache-Control: no-cache, no-store, must-revalidate`.
+  - A hashed asset returns the immutable header:
+    `curl -sI https://<domain>/assets/<one-hashed-file>.js | grep -i -e '^HTTP' -e '^cache-control'`
+    expect `Cache-Control: public, max-age=31536000, immutable`.
 - Now run a second deploy: `vendor/bin/dep deploy`. This health check goes through the new layout,
   so the release it checks is a proven rollback target.
 
@@ -235,6 +248,8 @@ Systemd: change `WorkingDirectory` and `ExecStart` the same way, then
 `sudo systemctl daemon-reload && sudo systemctl restart <worker-unit>`.
 
 The worker is stopped and started again. Supervisor waits up to `stopwaitsecs` for a job in hand.
+A program with `stopwaitsecs=3600` can make `supervisorctl update` wait up to an hour while a job
+finishes. Run the command in a second terminal, or in `tmux`, and do not interrupt it.
 
 Check:
 
@@ -252,7 +267,9 @@ Back out: restore the saved unit file, `sudo supervisorctl reread && sudo superv
 ## Step 7. Replace the scheduler with cron
 
 Skip when the app has no scheduled tasks (`sudo -u <app-user> php <base>/current/artisan schedule:list`
-prints none). Do the three parts in this order, so the scheduler never runs twice at once.
+prints none). Choose `<short-name>` first: letters, digits and hyphens only (for example `openbrain`). Do not use the
+domain or the base-path name if it has a dot. **cron silently ignores any file in `/etc/cron.d` whose name
+contains a dot**, so the scheduler would never run and nothing would say why. Do the three parts in this order, so the scheduler never runs twice at once.
 
 7a. Stop the old scheduler (do not remove it yet).
 
@@ -265,30 +282,33 @@ If the old unit does not exist, there is nothing to stop. Write that down in the
 7b. Install the cron file from `templates/scheduler.cron`:
 
 ```
-sudo tee /etc/cron.d/<app>-scheduler > /dev/null <<'CRON'
+sudo tee /etc/cron.d/<short-name>-scheduler > /dev/null <<'CRON'
 SHELL=/bin/sh
 PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 * * * * * <app-user> /usr/local/bin/dk-scheduler-run <base> >> <base>/shared/storage/logs/scheduler.log 2>&1
 CRON
-sudo chmod 644 /etc/cron.d/<app>-scheduler
+sudo chmod 644 /etc/cron.d/<short-name>-scheduler
 ```
 
-The file name must have no dot. cron ignores names with a dot.
+The file name must have no dot (see above).
 
 7c. After two minutes, check:
 
 ```
-cat <base>/shared/scheduler.heartbeat
+cat <base>/shared/storage/scheduler.heartbeat
 tail -n 5 <base>/shared/storage/logs/scheduler.log
 ```
 
-- The heartbeat holds a time less than two minutes old, like `2026-11-10T09:30:01Z`.
+- The job really fired: the heartbeat holds a time less than two minutes old, like `2026-11-10T09:30:01Z`.
+  If the file is missing or old, check the file name (no dot), its mode (644, owner root), and the log.
+  The heartbeat is in `shared/storage` because that directory belongs to `<app-user>`; `shared/` itself
+  belongs to `deploy`.
 - Test the pause switch: `touch <base>/shared/scheduler.paused`, wait two minutes, see that the
   heartbeat does not change, then `rm <base>/shared/scheduler.paused`.
 - Only now remove the old unit: delete its supervisor or systemd file, then `sudo supervisorctl update`
   or `sudo systemctl disable <scheduler-unit> && sudo systemctl daemon-reload`.
 
-Back out: `sudo rm /etc/cron.d/<app>-scheduler`, then start the old unit again
+Back out: `sudo rm /etc/cron.d/<short-name>-scheduler`, then start the old unit again
 (`sudo supervisorctl start <app>-scheduler`).
 
 ## Step 8. Update everything else that names the old paths
@@ -333,7 +353,7 @@ Prove each of these on this app before you delete anything:
 3. A rollback works: `dep rollback`, then check the site and `readlink <base>/current`. Deploy again to
    go forward.
 4. A queued job in progress survives a deploy.
-5. The scheduler ran across a deploy: the heartbeat kept moving.
+5. The scheduler ran across a deploy: the heartbeat (`<base>/shared/storage/scheduler.heartbeat`) kept moving.
 
 Then move the old tree aside. Leave it for some days. Delete it only when nothing needed it.
 
@@ -348,7 +368,7 @@ This also moves the old `.env` and `storage` links into `old-tree/`. Step 8 must
 Check: the site, the worker, the scheduler heartbeat and the backup job still work. `ls -A <base>` shows
 only `releases`, `shared`, `current`, `.dep` and `old-tree`.
 
-Final removal, after a few quiet days: `rm -rf <base>/old-tree`.
+Final removal, after a few quiet days: `sudo rm -rf <base>/old-tree` (some files belong to `<app-user>`).
 
 Back out (before the final removal): move the items back with
 `find <base>/old-tree -mindepth 1 -maxdepth 1 -exec mv {} <base>/ \;`, then undo steps 5 to 7 in
@@ -364,6 +384,7 @@ Copy this for each app.
 |---|---|
 | App | |
 | Domain | |
+| Short name (letters, digits, hyphen only; no dot) | |
 | Base path | |
 | App account | |
 | PHP-FPM socket | |
@@ -387,6 +408,7 @@ step 1 before you rely on it.
 |---|---|
 | App | Open Brain (Laravel 12) |
 | Domain | `openbrain.pellicer.org` |
+| Short name (letters, digits, hyphen only; no dot) | `openbrain` (cron file `/etc/cron.d/openbrain-scheduler`; never the domain) |
 | Base path | `/var/www/openbrain.pellicer.org` |
 | App account | `app-openbrain` |
 | PHP-FPM socket | `/run/php/php8.4-fpm-app-openbrain.sock` |
