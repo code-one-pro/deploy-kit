@@ -57,3 +57,30 @@ task('dk:upload', function () {
 
     upload(rtrim($source, '/') . '/', '{{release_path}}/', ['options' => $options]);
 });
+
+/*
+ * Positive rule for rollback targets (automatic and `dep rollback`): a release qualifies only when it
+ * carries .dk_live, written after it passed its health check. BAD_RELEASE is skipped as well.
+ */
+set('rollback_candidate', function () {
+    $currentRelease = basename(run('readlink {{current_path}}'));
+    $afterCurrent = false;
+    foreach (get('releases_list') as $release) {
+        if ($release === $currentRelease) {
+            $afterCurrent = true;
+            continue;
+        }
+        if ($afterCurrent
+            && test("[ -f {{deploy_path}}/releases/$release/.dk_live ]")
+            && ! test("[ -f {{deploy_path}}/releases/$release/BAD_RELEASE ]")) {
+            return $release;
+        }
+    }
+
+    throw new \Deployer\Exception\Exception('No more releases you can revert to.');
+});
+
+desc('Mark the current release as having served traffic: a valid rollback target later');
+task('dk:release:mark-live', function () {
+    run('touch {{current_path}}/.dk_live');
+});

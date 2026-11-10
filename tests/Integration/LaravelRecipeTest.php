@@ -312,4 +312,40 @@ PHP);
         $this->assertNotSame(0, $result['exit']);
         $this->assertFileExists($this->basePath() . '/.dep/deploy.lock');
     }
+
+    public function test_unfinished_release_is_never_a_rollback_target(): void
+    {
+        $this->assertSame(0, $this->deploy(self::RECIPE)['exit']);
+        $this->assertNotSame(0, $this->deploy(self::RECIPE, ['DK_FAIL_ON' => 'migrate'])['exit']);
+
+        unlink($this->sourcePath() . '/public/up.txt');
+        $failed = $this->deploy(self::RECIPE);
+        $this->assertNotSame(0, $failed['exit']);
+        $this->assertSame(realpath($this->basePath() . '/releases/1'), $this->currentTarget());
+        $this->assertStringContainsString('ROLLED BACK to 1:', $failed['output']);
+        $this->assertFileExists($this->basePath() . '/releases/2/BAD_RELEASE');
+    }
+
+    public function test_manual_rollback_skips_unfinished_release(): void
+    {
+        $this->assertSame(0, $this->deploy(self::RECIPE)['exit']);
+        $this->assertNotSame(0, $this->deploy(self::RECIPE, ['DK_FAIL_ON' => 'migrate'])['exit']);
+        $this->assertSame(0, $this->deploy(self::RECIPE)['exit']);
+
+        $result = $this->runDep('rollback', self::RECIPE);
+        $this->assertSame(0, $result['exit'], $result['output']);
+        $this->assertSame(realpath($this->basePath() . '/releases/1'), $this->currentTarget());
+    }
+
+    public function test_no_marked_release_means_no_rollback_target(): void
+    {
+        unlink($this->sourcePath() . '/public/up.txt');
+        $this->assertNotSame(0, $this->deploy(self::RECIPE)['exit']);
+
+        $second = $this->deploy(self::RECIPE);
+        $this->assertNotSame(0, $second['exit']);
+        $this->assertStringContainsString('no previous release', $second['output']);
+        $this->assertStringNotContainsString('ROLLED BACK', $second['output']);
+        $this->assertSame(realpath($this->basePath() . '/releases/2'), $this->currentTarget());
+    }
 }

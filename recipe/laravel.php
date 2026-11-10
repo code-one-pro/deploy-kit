@@ -171,6 +171,15 @@ task('dk:lock:forget', function () {
 after('deploy:unlock', 'dk:lock:forget');
 fail('deploy', function () {
     if (has('dk_locked') && get('dk_locked')) {
+        // A release still linked as `release` never reached the switch: it is not a rollback target.
+        try {
+            if (test('[ -h {{deploy_path}}/release ]')) {
+                $name = basename(run('readlink {{deploy_path}}/release'));
+                run("echo '" . timestamp() . ",{{user}}' > {{deploy_path}}/releases/$name/BAD_RELEASE");
+            }
+        } catch (\Throwable) {
+            // Marking is best effort; the lock must still be released.
+        }
         invoke('deploy:unlock');
     }
 });
@@ -192,6 +201,7 @@ task('deploy', [
     'deploy:symlink',
     'dk:queue:restart',
     'dk:health',
+    'dk:release:mark-live',
     'dk:opcache:clear',
     'deploy:unlock',
     'deploy:cleanup',
