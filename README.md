@@ -112,6 +112,7 @@ Set them with `set('key', value)` in `deploy.php`.
 | `dk_seeders` | `[]` | Seeder classes run after `migrate` (Laravel only). |
 | `dk_composer_options` | `--no-dev --optimize-autoloader --no-interaction --no-progress` | Options for `composer install` (Laravel only). |
 | `dk_storage_link` | `true` (Laravel) | Link `public/storage` in each release to `<base>/shared/storage/app/public`, as `storage:link` would. |
+| `dk_verify_view_path` | `true` (Laravel) | After `config:cache`, stop the deploy when `view.compiled` is not inside the release (see "Compiled views"). |
 | `dk_assets_dir` | `assets` | Directory of hashed assets to carry over (static only). |
 | `keep_releases` | `5` | Releases kept on the server. |
 | `shared_dirs` | `['storage']` (Laravel), `[]` (static) | Directories shared between releases. |
@@ -143,6 +144,23 @@ deploy:symlink, dk:health, dk:release:mark-live, deploy:unlock, deploy:cleanup
 A new static release keeps the live release's own hashed asset files, for one generation, so a
 browser tab opened before the deploy can still load its old chunks. Each release lists its own
 files in `.dk-own-assets`.
+
+## Compiled views
+
+Laravel names a compiled Blade view after its path relative to the app, so every release would write
+the same file names into one shared `storage/framework/views`. A new release would then overwrite the
+views the live release is serving, and after a rollback the old code would keep the new templates.
+
+The kit keeps compiled views per release, in `releases/<n>/bootstrap/cache/views`. It sets the real
+environment variable `VIEW_COMPILED_PATH` to that path on the `dk:cache` artisan commands
+(`config:cache`, `route:cache`, `view:cache`, `event:cache`). A real environment variable wins over
+`.env`, and `config:cache` freezes the value into the release's cached config, so PHP-FPM, the queue
+worker and cron all use the release's own directory afterwards.
+
+The one requirement on the app: `config/view.php`, if you published it, must keep
+`'compiled' => env('VIEW_COMPILED_PATH', ...)`. Laravel's own default does. After `config:cache` the
+kit reads `view.compiled` back from the release's cached config, and stops the deploy before the
+switch when it is not inside the release. Set `dk_verify_view_path` to `false` to skip that check.
 
 ## Roll back
 

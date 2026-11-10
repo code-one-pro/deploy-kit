@@ -31,6 +31,9 @@ if (($seeders = dkEnvList('DK_SEEDERS')) !== null) {
     set('dk_seeders', $seeders);
 }
 
+if (getenv('DK_VERIFY_VIEW_PATH') === '0') {
+    set('dk_verify_view_path', false);
+}
 if (getenv('DK_STORAGE_LINK') === '0') {
     set('dk_storage_link', false);
 }

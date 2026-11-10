@@ -8,6 +8,8 @@ use DeployKit\MigrationScanner;
 use Symfony\Component\Console\Input\InputOption;
 
 use function DeployKit\artisan;
+use function DeployKit\cachedViewPathCommand;
+use function DeployKit\releaseViewPath;
 use function DeployKit\pendingMigrationNames;
 use function DeployKit\seedCommand;
 
@@ -18,6 +20,7 @@ set('dk_seeders', []);
 set('dk_queue', true);
 set('dk_composer_options', '--no-dev --optimize-autoloader --no-interaction --no-progress');
 set('dk_storage_link', true);
+set('dk_verify_view_path', true);
 
 option('allow-breaking', null, InputOption::VALUE_NONE, 'Continue when pending migrations may break the running code.');
 
@@ -39,13 +42,13 @@ task('dk:vendors', function () {
     run('cd {{release_path}} && {{bin/composer}} install {{dk_composer_options}}');
 });
 
-desc('Hand the release\'s bootstrap/cache to the app account');
+desc('Hand the release\'s bootstrap/cache (with its own compiled views directory) to the app account');
 task('dk:handover', function () {
+    run('mkdir -p ' . releaseViewPath('{{release_path}}'));
     $user = get('dk_app_user');
     if ($user === null || $user === '') {
         return;
     }
-    run('mkdir -p {{release_path}}/bootstrap/cache');
     run('sudo chown -R ' . escapeshellarg((string) $user) . ': {{release_path}}/bootstrap/cache');
 });
 
@@ -110,10 +113,24 @@ task('dk:seed', function () {
     }
 });
 
+/*
+ * Compiled views are per release: Laravel names them by their path relative to the app, so a shared
+ * directory would let a new release overwrite the live one's views. The real environment variable wins
+ * over .env, and config:cache freezes it, so PHP-FPM, the worker and cron use the release's own path.
+ */
 desc('Build the config, route, view and event caches');
 task('dk:cache', function () {
+    $release = (string) get('release_path');
+    $env = ['VIEW_COMPILED_PATH' => releaseViewPath($release)];
     foreach (['config:cache', 'route:cache', 'view:cache', 'event:cache'] as $command) {
-        run(artisan($command));
+        run(artisan($command, $env));
+        if ($command === 'config:cache' && get('dk_verify_view_path')) {
+            $user = get('dk_app_user');
+            $value = trim(run(cachedViewPathCommand($release, $user === null || $user === '' ? null : (string) $user, (string) get('bin/php'))));
+            if (! str_starts_with($value, rtrim($release, '/') . '/')) {
+                throw new \RuntimeException("view.compiled is not inside this release ($value). The app must read VIEW_COMPILED_PATH in config/view.php.");
+            }
+        }
     }
 });
 

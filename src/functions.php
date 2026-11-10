@@ -6,18 +6,35 @@ namespace DeployKit;
 
 /**
  * Shell command running artisan from a release, as the app account when one is set.
+ *
+ * $env sets real environment variables for that one command. They go through `env` after sudo,
+ * because sudo resets the environment it was given.
+ *
+ * @param array<string, string> $env
  */
-function artisanCommand(string $releasePath, string $command, ?string $appUser, string $php = 'php'): string
+function artisanCommand(string $releasePath, string $command, ?string $appUser, string $php = 'php', array $env = []): string
 {
     $line = $php . ' ' . $releasePath . '/artisan ' . $command;
+    if ($env !== []) {
+        $assignments = [];
+        foreach ($env as $name => $value) {
+            if (preg_match('/^[A-Za-z_][A-Za-z0-9_]*$/', (string) $name) !== 1) {
+                throw new \InvalidArgumentException('Not an environment variable name: ' . $name);
+            }
+            $assignments[] = $name . '=' . escapeshellarg($value);
+        }
+        $line = 'env ' . implode(' ', $assignments) . ' ' . $line;
+    }
 
     return $appUser === null ? $line : 'sudo -u ' . $appUser . ' ' . $line;
 }
 
 /**
  * artisanCommand() fed from the Deployer context (release_path, dk_app_user, bin/php).
+ *
+ * @param array<string, string> $env
  */
-function artisan(string $command): string
+function artisan(string $command, array $env = []): string
 {
     $user = \Deployer\get('dk_app_user');
 
@@ -26,7 +43,29 @@ function artisan(string $command): string
         $command,
         $user === null || $user === '' ? null : (string) $user,
         (string) \Deployer\get('bin/php'),
+        $env,
     );
+}
+
+/** Where a release keeps its own compiled Blade views. */
+function releaseViewPath(string $releasePath): string
+{
+    return rtrim($releasePath, '/') . '/bootstrap/cache/views';
+}
+
+/**
+ * Shell command printing `view.compiled` from a release's cached config, and nothing else (the cached
+ * config holds secrets). It reads the frozen value PHP-FPM will use. `artisan config:show` cannot be
+ * used for this check: it prints paths inside the app relative to the base path, so a correct value
+ * would show as `bootstrap/cache/views` without the release path.
+ */
+function cachedViewPathCommand(string $releasePath, ?string $appUser, string $php = 'php'): string
+{
+    $file = rtrim($releasePath, '/') . '/bootstrap/cache/config.php';
+    $code = '$c = require ' . var_export($file, true) . '; echo is_string($c["view"]["compiled"] ?? null) ? $c["view"]["compiled"] : "";';
+    $line = $php . ' -r ' . escapeshellarg($code);
+
+    return $appUser === null ? $line : 'sudo -u ' . $appUser . ' ' . $line;
 }
 
 /**

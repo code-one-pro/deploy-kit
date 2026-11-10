@@ -175,6 +175,56 @@ PHP);
         $this->assertSame('db:seed --class=ASeeder --force', $log[3]);
     }
 
+    public function test_compiled_views_live_in_each_release(): void
+    {
+        $this->assertSame(0, $this->deploy(self::RECIPE)['exit']);
+        $first = $this->release();
+        $second = $this->deploy(self::RECIPE);
+        $this->assertSame(0, $second['exit'], $second['output']);
+        $secondRelease = $this->release();
+        $this->assertNotSame($first, $secondRelease);
+
+        $byCommand = [];
+        foreach ($this->artisanEnvLog() as [$command, $value]) {
+            $byCommand[$command][] = $value;
+        }
+        foreach (['config:cache', 'view:cache'] as $command) {
+            $this->assertSame(
+                [$first . '/bootstrap/cache/views', $secondRelease . '/bootstrap/cache/views'],
+                $byCommand[$command] ?? [],
+                $command . ' must get its own release\'s view path',
+            );
+        }
+        $this->assertDirectoryExists($secondRelease . '/bootstrap/cache/views');
+        $this->assertSame([], glob($this->basePath() . '/shared/storage/framework/views/*') ?: []);
+    }
+
+    public function test_view_path_outside_the_release_stops_before_the_switch(): void
+    {
+        $this->assertSame(0, $this->deploy(self::RECIPE)['exit']);
+        $before = readlink($this->basePath() . '/current');
+        $shared = $this->basePath() . '/shared/storage/framework/views';
+
+        $failed = $this->deploy(self::RECIPE, ['DK_FAKE_VIEW_PATH' => $shared]);
+        $this->assertNotSame(0, $failed['exit']);
+        $this->assertStringContainsString(
+            'view.compiled is not inside this release (' . $shared . '). The app must read VIEW_COMPILED_PATH in config/view.php.',
+            $failed['output'],
+        );
+        $this->assertSame($before, readlink($this->basePath() . '/current'));
+        $this->assertFileDoesNotExist($this->basePath() . '/.dep/deploy.lock');
+        $this->assertNotContains('route:cache', array_slice($this->artisanLog(), 7), 'the deploy stops right after config:cache');
+    }
+
+    public function test_view_path_check_can_be_turned_off(): void
+    {
+        $result = $this->deploy(self::RECIPE, [
+            'DK_FAKE_VIEW_PATH' => $this->basePath() . '/shared/storage/framework/views',
+            'DK_VERIFY_VIEW_PATH' => '0',
+        ]);
+        $this->assertSame(0, $result['exit'], $result['output']);
+    }
+
     public function test_namespaced_seeder_class_survives_the_shell(): void
     {
         $result = $this->deploy(self::RECIPE, ['DK_SEEDERS' => 'Database\\Seeders\\RolesSeeder']);

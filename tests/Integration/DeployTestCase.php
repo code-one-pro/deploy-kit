@@ -20,13 +20,15 @@ abstract class DeployTestCase extends TestCase
 
     private ?string $log = null;
 
+    private ?string $envLog = null;
+
     protected function tearDown(): void
     {
         foreach ($this->tempDirs as $dir) {
             (new Process(['rm', '-rf', $dir]))->mustRun();
         }
         $this->tempDirs = [];
-        $this->base = $this->source = $this->log = null;
+        $this->base = $this->source = $this->log = $this->envLog = null;
         parent::tearDown();
     }
 
@@ -79,6 +81,27 @@ abstract class DeployTestCase extends TestCase
     }
 
     /**
+     * The VIEW_COMPILED_PATH each logged fake artisan command was started with ('' when unset).
+     *
+     * @return list<array{0:string, 1:string}> [command, value] pairs, in order
+     */
+    protected function artisanEnvLog(): array
+    {
+        $file = $this->envLogFile();
+        if (! is_file($file)) {
+            return [];
+        }
+        $pairs = [];
+        foreach (file($file, FILE_IGNORE_NEW_LINES) ?: [] as $line) {
+            if ($line !== '') {
+                $pairs[] = explode("\t", $line, 2) + [1 => ''];
+            }
+        }
+
+        return $pairs;
+    }
+
+    /**
      * Run `dep deploy` for the recipe against the localhost host.
      *
      * @param array<string, string> $env
@@ -106,6 +129,7 @@ abstract class DeployTestCase extends TestCase
                 'DK_BASE' => $this->basePath(),
                 'DK_SOURCE' => $this->sourcePath(),
                 'DK_FAKE_LOG' => $this->logFile(),
+                'DK_FAKE_ENV_LOG' => $this->envLogFile(),
             ], $env),
             null,
             300,
@@ -135,6 +159,11 @@ abstract class DeployTestCase extends TestCase
     private function logFile(): string
     {
         return $this->log ??= $this->makeTempDir('dk-log') . '/artisan.log';
+    }
+
+    private function envLogFile(): string
+    {
+        return $this->envLog ??= dirname($this->logFile()) . '/artisan-env.log';
     }
 
     private function makeTempDir(string $prefix): string

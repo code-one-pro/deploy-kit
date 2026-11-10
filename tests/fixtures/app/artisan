@@ -9,6 +9,15 @@ if ($log !== false && $log !== '') {
     file_put_contents($log, implode(' ', $args) . PHP_EOL, FILE_APPEND);
 }
 
+// The VIEW_COMPILED_PATH the cache commands were started with, one "<command>\t<value>" line each.
+$command = $args[0] ?? '';
+$compiled = getenv('VIEW_COMPILED_PATH');
+$compiled = $compiled === false ? '' : $compiled;
+$envLog = getenv('DK_FAKE_ENV_LOG');
+if (in_array($command, ['config:cache', 'view:cache'], true) && $envLog !== false && $envLog !== '') {
+    file_put_contents($envLog, $command . "\t" . $compiled . PHP_EOL, FILE_APPEND);
+}
+
 $failOn = getenv('DK_FAIL_ON');
 if ($failOn !== false && $failOn !== '' && ($args[0] ?? null) === $failOn) {
     fwrite(STDERR, "fake artisan: forced failure on {$failOn}\n");
@@ -22,6 +31,19 @@ if (($args[0] ?? null) === 'migrate:status' && in_array('--pending', $args, true
             echo trim($name), PHP_EOL;
         }
     }
+}
+
+// config:cache freezes view.compiled like Laravel does: the real environment variable, else the default.
+// DK_FAKE_VIEW_PATH stands for an app whose config/view.php ignores VIEW_COMPILED_PATH.
+$cachedConfig = __DIR__ . '/bootstrap/cache/config.php';
+if ($command === 'config:cache') {
+    $override = getenv('DK_FAKE_VIEW_PATH');
+    $value = $override !== false && $override !== '' ? $override : ($compiled !== '' ? $compiled : __DIR__ . '/storage/framework/views');
+    @mkdir(dirname($cachedConfig), 0755, true);
+    file_put_contents($cachedConfig, '<?php return ' . var_export(['app' => ['key' => 'base64:topsecret'], 'view' => ['compiled' => $value]], true) . ';' . PHP_EOL);
+}
+if ($command === 'config:show' && ($args[1] ?? null) === 'view.compiled' && is_file($cachedConfig)) {
+    echo (require $cachedConfig)['view']['compiled'], PHP_EOL;
 }
 
 exit(0);
