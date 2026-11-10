@@ -1,0 +1,5 @@
+# /etc/cron.d/<app>-scheduler  (file mode 644, owner root, no dot in the file name)
+# Replace <app-user> and <base-path>. Install dk-scheduler-run first (see docs/cutover-runbook.md).
+SHELL=/bin/sh
+PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+* * * * * <app-user> /usr/local/bin/dk-scheduler-run <base-path> >> <base-path>/shared/storage/logs/scheduler.log 2>&1
