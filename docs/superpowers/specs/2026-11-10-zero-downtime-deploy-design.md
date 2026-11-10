@@ -1,6 +1,6 @@
 # deploy-kit: zero-downtime deployment for Laravel apps
 
-Design, 2026-11-10. Status: awaiting approval by Jose Luis (JL).
+Design, 2026-11-10. Status: approved by Jose Luis (JL) on 2026-11-10.
 
 Lines marked **(JL)** were decided by JL. Lines marked **(my call)** were chosen by the
 author and can be overridden. Lines marked **(unverified)** were not checked against the
@@ -286,8 +286,9 @@ Detailed when its turn comes; listed so nothing is a surprise:
 - `docs/claude/rollouts.md`, the release-notes gate and the `--recreate-databases` test
   run stay as they are.
 
-- QMP's deploy script and sudoers files still name `www-data`, while the `hetzner-server`
-  README says the app runs as `app-qmpapi`. Establish the real state on the server first.
+- `www-data` is deprecated **(JL)**. QMP's deploy script and sudoers files still name it;
+  those references are stale and are replaced by `app-qmpapi` when QMP moves. The kit never
+  uses `www-data` for any app.
 
 ## 9. Left to the builder
 
