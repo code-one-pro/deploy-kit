@@ -14,7 +14,7 @@ The kit also has server-side files in `templates/` and a one-time move guide in
 ## Versions
 
 - Deployer **8.0.5**, pinned as `^8.0.5`.
-- PHP `^8.3` on the workstation (Deployer 8 needs it). The server runs PHP 8.4-FPM.
+- PHP `^8.4.27` on the workstation (8.4.27 fixes a security vulnerability; Deployer 8 itself needs 8.3). The server runs PHP 8.4-FPM, also 8.4.27 or later.
 
 ## What a deploy does
 
