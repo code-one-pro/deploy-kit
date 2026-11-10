@@ -7,6 +7,10 @@ namespace Deployer;
 use function DeployKit\cachetoolCommand;
 use function DeployKit\currentArtisan;
 use function DeployKit\healthCommand;
+use function DeployKit\releasePathFor;
+use function DeployKit\releasesToRemove;
+
+use const DeployKit\RELEASE_NAME_PATTERN;
 
 // Deployer's own common recipe (its bin/dep puts Deployer's directory first on the include path).
 require 'recipe/common.php';
@@ -141,6 +145,76 @@ task('dk:opcache:clear', function () {
         run(cachetoolCommand((string) get('dk_cachetool'), $socket));
     } catch (\Throwable) {
         warning('The opcache could not be cleared (' . get('dk_cachetool') . ' via ' . $socket . '); PHP-FPM may serve old code until its next restart.');
+    }
+});
+
+/*
+ * Replaces deploy:cleanup, which keeps the newest releases by log (failed ones included, so failed
+ * attempts can delete the last live release) and cannot remove a release whose bootstrap/cache belongs
+ * to the app account.
+ */
+desc('Remove old releases, keeping current and the newest live ones');
+task('dk:cleanup', function () {
+    $raw = (string) get('deploy_path');
+    if (trim($raw) === '') {
+        throw new \RuntimeException('Refusing to clean up: deploy_path is empty.');
+    }
+    $deployPath = trim(run('cd {{deploy_path}} && pwd -P'));
+
+    // Same bookkeeping as deploy:cleanup: a leftover `release` link names an unfinished release.
+    run('cd {{deploy_path}} && if [ -h release ]; then rm release; fi');
+
+    $releasesDir = escapeshellarg($deployPath . '/releases');
+    if (! test("[ -d $releasesDir ]")) {
+        return;
+    }
+    // One line per real directory: "<name> <1 when live, else 0>". Links and files are never listed.
+    $listing = run("cd $releasesDir && for d in *; do [ -d \"\$d\" ] && [ ! -h \"\$d\" ] || continue; "
+        . "if [ -f \"\$d/.dk_live\" ] && [ ! -f \"\$d/BAD_RELEASE\" ]; then echo \"\$d 1\"; else echo \"\$d 0\"; fi; done");
+    $present = [];
+    $live = [];
+    foreach (explode("\n", $listing) as $line) {
+        $parts = explode(' ', trim($line));
+        if (count($parts) !== 2 || preg_match(RELEASE_NAME_PATTERN, $parts[0]) !== 1) {
+            continue; // not a release name: never touched
+        }
+        $present[] = $parts[0];
+        if ($parts[1] === '1') {
+            $live[] = $parts[0];
+        }
+    }
+
+    // Newest first: Deployer's log order, then directories it never logged, by name.
+    $names = [];
+    foreach (array_reverse(get('releases_log')) as $entry) {
+        $name = (string) ($entry['release_name'] ?? '');
+        if (in_array($name, $present, true) && ! in_array($name, $names, true)) {
+            $names[] = $name;
+        }
+    }
+    $unlogged = array_values(array_diff($present, $names));
+    usort($unlogged, static fn (string $a, string $b): int => strnatcmp($b, $a));
+    $names = array_merge($names, $unlogged);
+
+    $current = null;
+    $currentReal = null;
+    if (test('[ -h {{current_path}} ]')) {
+        $current = basename(run('readlink {{current_path}}'));
+        $currentReal = trim(run('cd {{current_path}} && pwd -P'));
+    }
+
+    $user = get('dk_app_user');
+    foreach (releasesToRemove($names, $live, $current, (int) get('keep_releases')) as $name) {
+        $path = releasePathFor($deployPath, $name);
+        $quoted = escapeshellarg($path);
+        if ($currentReal !== null && trim(run("cd $quoted && pwd -P")) === $currentReal) {
+            continue; // never the release current resolves to
+        }
+        if ($user !== null && $user !== '') {
+            // The app account owns bootstrap/cache; deploy cannot empty it.
+            run("if [ -d $quoted/bootstrap/cache ]; then sudo -u " . escapeshellarg((string) $user) . " find $quoted/bootstrap/cache -mindepth 1 -delete; fi");
+        }
+        run("rm -rf $quoted");
     }
 });
 

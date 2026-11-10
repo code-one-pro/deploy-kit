@@ -112,6 +112,77 @@ function cachetoolCommand(string $cachetool, string $socket): string
 }
 
 /**
+ * Which release directories a cleanup removes.
+ *
+ * Kept: the release `current` points to, plus the newest live releases (those that passed a health
+ * check and were not rolled back), up to $keep in total. Everything else goes, failed and unfinished
+ * releases included, so failed attempts never push the last live release out.
+ *
+ * Before any release is marked live (releases made before the marker existed), only clear surplus
+ * goes: releases older than current that are not among the $keep newest. Nothing goes when there is
+ * no current, when it is not among $names, or when only one release exists.
+ *
+ * @param list<string> $names release directory names, newest first
+ * @param list<string> $live names of the live releases
+ * @return list<string> names to remove, newest first
+ */
+function releasesToRemove(array $names, array $live, ?string $current, int $keep): array
+{
+    if ($keep <= 0 || count($names) <= 1 || $current === null || ! in_array($current, $names, true)) {
+        return [];
+    }
+
+    $kept = [$current => true];
+    $liveSet = array_flip(array_intersect($live, $names));
+    if ($liveSet !== []) {
+        foreach ($names as $name) {
+            if (count($kept) >= $keep) {
+                break;
+            }
+            if (isset($liveSet[$name])) {
+                $kept[$name] = true;
+            }
+        }
+    } else {
+        foreach ($names as $i => $name) {
+            if ($name === $current) {
+                break;
+            }
+            $kept[$name] = true; // newer than current, status unknown: keep
+        }
+        foreach (array_slice($names, 0, $keep) as $name) {
+            $kept[$name] = true;
+        }
+    }
+
+    return array_values(array_filter($names, static fn (string $name): bool => ! isset($kept[$name])));
+}
+
+/** Release directory names the kit will ever delete: Deployer's numbers, or a plain overridden name. */
+const RELEASE_NAME_PATTERN = '/^[A-Za-z0-9][A-Za-z0-9._-]*$/';
+
+/**
+ * The path of one release, for a delete. Throws unless the deploy path is absolute and plain, the name
+ * is a plain release name, and the result sits directly under <deploy_path>/releases/.
+ */
+function releasePathFor(string $deployPath, string $name): string
+{
+    $base = rtrim($deployPath, '/');
+    if ($base === '' || $base[0] !== '/' || in_array('..', explode('/', $base), true) || in_array('.', explode('/', $base), true)) {
+        throw new \RuntimeException('Refusing to delete a release: the deploy path "' . $deployPath . '" is not a plain absolute path.');
+    }
+    if (preg_match(RELEASE_NAME_PATTERN, $name) !== 1 || str_contains($name, '..')) {
+        throw new \RuntimeException('Refusing to delete a release: "' . $name . '" is not a release name.');
+    }
+    $path = $base . '/releases/' . $name;
+    if (! str_starts_with($path, $base . '/releases/') || dirname($path) !== $base . '/releases') {
+        throw new \RuntimeException('Refusing to delete "' . $path . '": it is not inside ' . $base . '/releases/.');
+    }
+
+    return $path;
+}
+
+/**
  * Migration names in `migrate:status --pending` output.
  *
  * Accepts bare names one per line and Laravel's framed table, where a pending row looks like

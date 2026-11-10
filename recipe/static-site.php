@@ -47,5 +47,5 @@ task('deploy', [
     'dk:health',
     'dk:release:mark-live',
     'deploy:unlock',
-    'deploy:cleanup',
+    'dk:cleanup',
 ]);

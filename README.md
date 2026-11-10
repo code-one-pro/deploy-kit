@@ -114,7 +114,7 @@ Set them with `set('key', value)` in `deploy.php`.
 | `dk_storage_link` | `true` (Laravel) | Link `public/storage` in each release to `<base>/shared/storage/app/public`, as `storage:link` would. |
 | `dk_verify_view_path` | `true` (Laravel) | After `config:cache`, stop the deploy when `view.compiled` is not inside the release (see "Compiled views"). |
 | `dk_assets_dir` | `assets` | Directory of hashed assets to carry over (static only). |
-| `keep_releases` | `5` | Releases kept on the server. |
+| `keep_releases` | `5` | Releases kept on the server: the live one plus the newest releases that passed a health check (see "Old releases"). |
 | `shared_dirs` | `['storage']` (Laravel), `[]` (static) | Directories shared between releases. |
 | `shared_files` | `['.env']` (Laravel), `[]` (static) | Files shared between releases. |
 
@@ -131,14 +131,14 @@ Laravel (`dep deploy`):
 deploy:info, deploy:setup, deploy:lock, deploy:release, dk:upload, deploy:shared,
 dk:storage:link, dk:vendors, dk:handover, dk:preflight, dk:migrations:check, dk:migrate, dk:seed, dk:cache,
 deploy:symlink, dk:queue:restart, dk:health, dk:release:mark-live, dk:opcache:clear,
-deploy:unlock, deploy:cleanup
+deploy:unlock, dk:cleanup
 ```
 
 Static site:
 
 ```
 deploy:setup, deploy:lock, deploy:release, dk:upload, dk:static:carry-assets,
-deploy:symlink, dk:health, dk:release:mark-live, deploy:unlock, deploy:cleanup
+deploy:symlink, dk:health, dk:release:mark-live, deploy:unlock, dk:cleanup
 ```
 
 A new static release keeps the live release's own hashed asset files, for one generation, so a
@@ -161,6 +161,20 @@ The one requirement on the app: `config/view.php`, if you published it, must kee
 `'compiled' => env('VIEW_COMPILED_PATH', ...)`. Laravel's own default does. After `config:cache` the
 kit reads `view.compiled` back from the release's cached config, and stops the deploy before the
 switch when it is not inside the release. Set `dk_verify_view_path` to `false` to skip that check.
+
+## Old releases
+
+`dk:cleanup` replaces Deployer's `deploy:cleanup`. It keeps the release `current` points to plus the
+newest releases that passed a health check (`.dk_live`, no `BAD_RELEASE`), up to `keep_releases` in
+total, and removes every other release directory: failed, rolled back and unfinished ones included.
+So a run of failed deploys never pushes the last good release out. When no release carries
+`.dk_live` yet (releases made before the kit), it removes only releases older than `current` that are
+not among the `keep_releases` newest.
+
+The app account owns each release's `bootstrap/cache`, so with `dk_app_user` set the kit first empties
+that directory as the app account (`sudo -u <app-user> find <release>/bootstrap/cache -mindepth 1 -delete`),
+then removes the release as the SSH user. It only deletes paths directly under `<base>/releases/`
+whose names it listed there, and never the release `current` resolves to.
 
 ## Roll back
 

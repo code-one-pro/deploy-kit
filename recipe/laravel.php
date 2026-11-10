@@ -155,5 +155,5 @@ task('deploy', [
     'dk:release:mark-live',
     'dk:opcache:clear',
     'deploy:unlock',
-    'deploy:cleanup',
+    'dk:cleanup',
 ]);

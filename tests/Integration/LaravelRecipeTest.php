@@ -317,6 +317,41 @@ PHP);
         $this->assertCount(5, glob($this->basePath() . '/releases/*') ?: []);
     }
 
+    public function test_failed_releases_do_not_push_the_rollback_target_out(): void
+    {
+        $this->assertSame(0, $this->deploy(self::RECIPE)['exit']);
+        for ($i = 0; $i < 4; $i++) {
+            $this->assertNotSame(0, $this->deploy(self::RECIPE, ['DK_FAIL_ON' => 'migrate'])['exit']);
+        }
+        $last = $this->deploy(self::RECIPE);
+        $this->assertSame(0, $last['exit'], $last['output']);
+        $this->assertDirectoryExists($this->basePath() . '/releases/1');
+
+        $result = $this->runDep('rollback', self::RECIPE);
+        $this->assertSame(0, $result['exit'], $result['output']);
+        $this->assertSame(realpath($this->basePath() . '/releases/1'), $this->currentTarget());
+    }
+
+    public function test_bad_and_unfinished_releases_are_removed_by_the_next_good_deploy(): void
+    {
+        $this->assertSame(0, $this->deploy(self::RECIPE)['exit']);
+        $this->assertNotSame(0, $this->deploy(self::RECIPE, ['DK_FAIL_ON' => 'migrate'])['exit']);
+        unlink($this->sourcePath() . '/public/up.txt');
+        $this->assertNotSame(0, $this->deploy(self::RECIPE)['exit']);
+        file_put_contents($this->sourcePath() . '/public/up.txt', 'ok');
+        $this->assertFileExists($this->basePath() . '/releases/2/BAD_RELEASE');
+        $this->assertFileExists($this->basePath() . '/releases/3/BAD_RELEASE');
+        mkdir($this->basePath() . '/releases/77'); // an unfinished directory Deployer never logged
+
+        $result = $this->deploy(self::RECIPE);
+        $this->assertSame(0, $result['exit'], $result['output']);
+
+        $left = array_map('basename', glob($this->basePath() . '/releases/*') ?: []);
+        sort($left);
+        $this->assertSame(['1', '4'], $left);
+        $this->assertFalse(is_link($this->basePath() . '/release'));
+    }
+
     /** Where `current` points now; PHP caches realpath() results, which goes stale as the link moves. */
     private function lastLogLine(): string
     {
