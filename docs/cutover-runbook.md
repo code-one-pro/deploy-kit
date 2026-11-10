@@ -38,6 +38,8 @@ umask
 sudo -u <app-user> sh -c umask
 id deploy
 getent group <app-user>
+sudo -n -u <app-user> env true && echo env-ok
+(cd / && sudo -n -u <app-user> find /dev/null -prune) && echo find-ok
 ```
 
 Check:
@@ -47,6 +49,8 @@ Check:
 - `.env` is `deploy:<app-user>` mode 640. `storage` belongs to `<app-user>`. Passport keys, if the
   app has them, are owned by `<app-user>` with mode 600 (or 660 with an ACL: never run `chmod 600`
   on a key that has an ACL).
+- `env-ok` and `find-ok` are printed: the kit runs `env` and `find` as the app account. (`find` is run
+  from `/`: it fails from a directory the app account cannot enter, such as the home of `deploy`.)
 - The pool file `/etc/php/8.4/fpm/pool.d/<app-user>.conf` has the `listen` socket you wrote down.
 - Write down both umask values (for example `0002` or `0022`) and whether `deploy` is a member of the
   `<app-user>` group (`id deploy` lists it, or `getent group <app-user>` names `deploy`). Later steps
@@ -466,31 +470,44 @@ Copy this for each app.
 | Preflight command, seeders | |
 | Started / finished | |
 
-## Worksheet (example): Open Brain
+## Worksheet: Open Brain
 
-Taken from the design and the `hetzner-server` repo. "confirm" means: check it on the server in
-step 1 before you rely on it.
+Read from the server on 2026-11-10 (read-only). Nothing here is a guess unless it says so.
 
 | Item | Value |
 |---|---|
-| App | Open Brain (Laravel 12) |
+| App | Open Brain (Laravel 12.71) |
 | Domain | `openbrain.pellicer.org` |
 | Short name (letters, digits, hyphen only; no dot) | `openbrain` (cron file `/etc/cron.d/openbrain-scheduler`; never the domain) |
-| Base path | `/var/www/openbrain.pellicer.org` |
-| App account | `app-openbrain` |
-| PHP-FPM socket | `/run/php/php8.4-fpm-app-openbrain.sock` |
-| Worker unit | supervisor `openbrain-worker`, 2 processes, runs `queue:work --sleep=3 --tries=3 --max-time=3600` as `app-openbrain` |
-| Scheduler unit today | none in supervisor; confirm there is no other scheduler (systemd, cron) |
-| Database | PostgreSQL, on the 18 cluster, port 5432 |
-| Health URL | `/up` on the domain; confirm it answers 200 and is routed to the app in the Caddyfile |
-| Files that name the old path | Caddyfile site block (`root`); `/etc/supervisor/conf.d/openbrain-worker.conf` (`command`, `directory`, `stdout_logfile`); backup config `/home/deploy/backups/conf.d/openbrain.conf` (reads `.env` at the base path: change to `<base>/shared/.env`); confirm sudoers, polkit and logrotate files |
-| Passport keys | confirm (yes or no, and their mode) |
-| umask of `deploy` and of `app-openbrain` | confirm in step 1 |
-| `deploy` in the `app-openbrain` group | confirm in step 1 |
-| Has scheduled tasks | confirm with `schedule:list`; if none, skip step 7 |
-| Base path owner and mode | confirm `deploy`, 755 |
-| `.env` owner and mode | confirm `deploy:app-openbrain`, 640 |
-| Branch and local gates | branch `master`; confirm the gates in the app's deploy script |
-| Preflight command, seeders | confirm (none expected) |
-| Queue, cache and sessions | in the database (confirm); nothing in `storage/` to lose besides logs and uploads |
+| Base path | `/var/www/openbrain.pellicer.org` (67 MB: vendor 53 MB, storage 8.4 MB; 26 GB free on the disk) |
+| Base path owner and mode | `deploy:www-data` 755. The code tree is owned by `deploy`; it is not a git clone. |
+| App account | `app-openbrain` (its group has no other members) |
+| PHP | CLI and FPM both 8.4.27 |
+| PHP-FPM socket | `/run/php/php8.4-fpm-app-openbrain.sock` (pool `app-openbrain`, `pm = ondemand`, 4 children) |
+| Worker unit | supervisor `openbrain-worker`, 2 processes, `queue:work --sleep=3 --tries=3 --max-time=3600` as `app-openbrain`, `stopwaitsecs=3600` |
+| Scheduler unit today | **none**: no supervisor program, no systemd unit or timer, no cron entry. `schedule:list` has one task, `recovery:run` daily at 04:00, so it is not running today. Step 7 turns it on. |
+| Database | PostgreSQL on `127.0.0.1:5432` |
+| Queue, cache and sessions | all `database`; nothing in `storage/` to lose besides logs, uploads and the items below |
+| Health URL | `https://openbrain.pellicer.org/up` answers 200 (asked on the server with the host pinned to 127.0.0.1) |
+| Caddy site block today | `root * <base>/public`, plain `php_fastcgi` (no `resolve_root_symlink`), `file_server`, `encode gzip`, a `not file` rewrite to `/index.php`, log `/var/log/caddy/openbrain.pellicer.org.log` |
+| Files that name the old path | `/etc/caddy/Caddyfile` (`root`); `/etc/supervisor/conf.d/openbrain-worker.conf` (`command`, `directory`, `stdout_logfile`); `/home/deploy/backups/conf.d/openbrain.conf` line 7 (the `.env` path: change to `<base>/shared/.env`); `/etc/php/8.4/fpm/pool.d/app-openbrain.conf` (a comment only, no change needed). Nothing in sudoers, polkit, logrotate or `/etc/cron.d`. |
+| `.env` owner and mode | `deploy:app-openbrain` 640 |
+| `storage` owner and mode | `app-openbrain:www-data` 775, with an ACL (`deploy` rwx, `caddy` x; default ACL for `deploy` and `app-openbrain`). Moved whole with `sudo mv`, the ACL travels with it. |
+| Passport keys | yes: `storage/oauth-private.key` and `oauth-public.key`, `app-openbrain:www-data` 660 **with an ACL**. Never `chmod` them. |
+| Other state in `storage/` | `storage/app/sqlite_vec.db` (live, with `-wal` and `-shm` files); `storage/app/gcp/` (a service-account key file); `storage/app/public/thoughts/` (images served through `public/storage`) |
+| `bootstrap/cache` today | `deploy:www-data` 775 with an ACL; each new release gets its own, owned by `app-openbrain` |
+| `config/view.php` | not present, so Laravel's default reads `VIEW_COMPILED_PATH`; `.env` does not set it |
+| umask of `deploy` and of `app-openbrain` | `0002` and `0002` |
+| `deploy` in the `app-openbrain` group | no. Files the app account creates are readable by others (umask `0002`), so `deploy` can read them. |
+| sudo as the app account | `env` works. `find` works from `/` and exits 1 from `/home/deploy` (mode 750); the kit's cleanup runs it from `/`. `artisan` works from either. |
+| Opcache | PHP defaults: 128 MB, 10000 files, `validate_timestamps` on, `revalidate_freq` 2. **Proposed, needs JL's yes:** 256 MB and 30000 files. It needs one PHP-FPM reload, off-hours, outside any deploy. |
+| Server tools | Caddy 2.11.7, composer 2.9.3. `cachetool` is not installed (step 2a). |
+| Has scheduled tasks | yes (`recovery:run`); step 7 applies |
+| Branch and local gates | branch `master`. The app's `deploy.sh` checks the branch and runs `npm ci` and `npm run build`. It runs no tests. |
+| Preflight command, seeders | none |
+| Left behind at the base path after the move | a stale `sqlite_vec.db` from April 2026 in the code root (the live one is in `storage/app/`), `.superpowers/`, `.DS_Store`, `docs/`, `tests/`: all part of the old tree, kept in the backup of step 3 and not uploaded again |
 | Started / finished | |
+
+Differences from the `hetzner-server` repo and the design: the group of the code tree and of `storage`
+is still `www-data` (access is by owner and ACL, so nothing depends on it); `storage` and the Passport
+keys carry ACLs; there is no scheduler of any kind.
