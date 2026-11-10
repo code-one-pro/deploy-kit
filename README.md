@@ -162,10 +162,17 @@ requests until the switch, and a rollback puts it back.
 - Breaking changes (rename, drop, type change, `NOT NULL`) take two deploys. The first adds the new
   shape and stops using the old one. A later deploy removes the old shape.
 
-Before `migrate`, `dk:migrations:check` reads the pending migrations and flags `dropColumn`,
-`renameColumn`, table rename or drop, `->change()`, `dropForeign` and raw `DROP COLUMN`,
-`DROP TABLE`, `RENAME` and `ALTER COLUMN`. It is a text check: it can flag harmless code, and it can
-miss things. It is a prompt to think, not a proof.
+Before `migrate`, `dk:migrations:check` reads the pending migrations and flags `dropColumn` and
+`dropColumns` (also `Schema::dropColumns(...)`), `dropSoftDeletes`, `dropTimestamps` (and their `Tz`
+forms), `dropMorphs`, `dropRememberToken`, `renameColumn`, table rename or drop (also through
+`Schema::connection(...)`), `->change()`, `dropForeign` and raw `DROP COLUMN`, `DROP TABLE`, `RENAME`
+and `ALTER COLUMN`. It is a text check: it can flag harmless code, and it can miss things. It is a
+prompt to think, not a proof.
+
+What it does NOT detect:
+
+- A new `NOT NULL` column without a default. The old code does not fill it, so its inserts fail.
+- A statement split across several lines (the check reads one line at a time).
 
 - In a terminal it shows the file and line and asks you to confirm.
 - Without a terminal it stops the deploy.
@@ -179,10 +186,13 @@ a warning and `migrate` still runs.
 The scheduler is cron plus `templates/scheduler-run.sh`. A deploy never restarts it.
 
 ```
-touch <base>/shared/scheduler.paused      # pause: the next run does nothing
-rm <base>/shared/scheduler.paused         # resume
+sudo -u <app-user> touch <base>/shared/storage/scheduler.paused   # pause: the next run does nothing
+sudo -u <app-user> rm <base>/shared/storage/scheduler.paused      # resume
 cat <base>/shared/storage/scheduler.heartbeat    # UTC time of the last run that finished well
 ```
+
+The flag sits next to the heartbeat in `shared/storage`, which the app account owns, so the app
+itself (an admin page running as that account) can pause and resume it too.
 
 A healthy scheduler writes a new heartbeat every minute. Its output is in
 `<base>/shared/storage/logs/scheduler.log`.

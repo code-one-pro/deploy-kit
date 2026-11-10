@@ -60,6 +60,12 @@ function healthCommand(string $url, bool $resolveLocal): string
     return $line . ' ' . escapeshellarg($url);
 }
 
+/** The artisan arguments running one seeder; the class is quoted so `Database\Seeders\X` survives the shell. */
+function seedCommand(string $class): string
+{
+    return 'db:seed --class=' . escapeshellarg($class) . ' --force';
+}
+
 /** Shell command clearing the PHP-FPM pool's opcache through cachetool. */
 function cachetoolCommand(string $cachetool, string $socket): string
 {

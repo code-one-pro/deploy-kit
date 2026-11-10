@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
 # deploy-kit scheduler runner. Called by cron once a minute, as the app account:
 #   dk-scheduler-run <base-path>
-# Does nothing when there is no release yet or when the pause flag exists.
-# The heartbeat lives in shared/storage, which the app account owns.
+# Does nothing when there is no release yet or when the pause flag <base>/shared/storage/scheduler.paused
+# exists. The flag and the heartbeat live in shared/storage, which the app account owns, so the app
+# account (and an admin page running as it) can create and remove the flag.
 # After a successful run it writes the UTC time to <base>/shared/storage/scheduler.heartbeat.
 set -eu
 
@@ -17,7 +18,7 @@ if [ ! -f "$base/current/artisan" ]; then
     exit 0
 fi
 
-if [ -e "$base/shared/scheduler.paused" ]; then
+if [ -e "$base/shared/storage/scheduler.paused" ]; then
     exit 0
 fi
 

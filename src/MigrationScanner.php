@@ -12,10 +12,10 @@ final class MigrationScanner
 {
     /** Ordered: the first matching label wins for a line. */
     private const PATTERNS = [
-        'dropColumn' => '/->\s*dropColumns?\s*\(/',
+        'dropColumn' => '/->\s*(?:dropColumns?|dropSoftDeletes(?:Tz)?|dropTimestamps(?:Tz)?|dropMorphs|dropRememberToken)\s*\(|Schema::\s*dropColumns\s*\(/',
         'renameColumn' => '/->\s*renameColumn\s*\(/',
-        'rename' => '/Schema::\s*rename\s*\(/',
-        'drop' => '/Schema::\s*drop(?:IfExists)?\s*\(/',
+        'rename' => '/Schema::\s*(?:connection\s*\(.*\)\s*->\s*)?rename\s*\(/',
+        'drop' => '/Schema::\s*(?:connection\s*\(.*\)\s*->\s*)?drop(?:IfExists)?\s*\(/',
         'change' => '/->\s*change\s*\(/',
         'dropForeign' => '/->\s*dropForeign\s*\(/',
         'raw-sql' => '/DROP\s+COLUMN|DROP\s+TABLE|RENAME\s+COLUMN|RENAME\s+TO|ALTER\s+COLUMN/i',

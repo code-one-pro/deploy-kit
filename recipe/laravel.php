@@ -9,6 +9,7 @@ use Symfony\Component\Console\Input\InputOption;
 
 use function DeployKit\artisan;
 use function DeployKit\pendingMigrationNames;
+use function DeployKit\seedCommand;
 
 require __DIR__ . '/common.php';
 
@@ -91,7 +92,7 @@ task('dk:migrate', function () {
 desc('Run the configured seeders');
 task('dk:seed', function () {
     foreach ((array) get('dk_seeders') as $seeder) {
-        run(artisan('db:seed --class=' . $seeder . ' --force'), forceOutput: true);
+        run(artisan(seedCommand((string) $seeder)), forceOutput: true);
     }
 });
 

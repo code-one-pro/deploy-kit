@@ -61,7 +61,7 @@ final class SchedulerRunScriptTest extends TestCase
     public function test_noop_when_paused(): void
     {
         $this->installArtisan();
-        touch($this->base . '/shared/scheduler.paused');
+        touch($this->base . '/shared/storage/scheduler.paused');
 
         $process = $this->runScript([$this->base]);
 

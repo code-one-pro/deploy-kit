@@ -303,8 +303,8 @@ tail -n 5 <base>/shared/storage/logs/scheduler.log
   If the file is missing or old, check the file name (no dot), its mode (644, owner root), and the log.
   The heartbeat is in `shared/storage` because that directory belongs to `<app-user>`; `shared/` itself
   belongs to `deploy`.
-- Test the pause switch: `touch <base>/shared/scheduler.paused`, wait two minutes, see that the
-  heartbeat does not change, then `rm <base>/shared/scheduler.paused`.
+- Test the pause switch: `sudo -u <app-user> touch <base>/shared/storage/scheduler.paused`, wait two
+  minutes, see that the heartbeat does not change, then `sudo -u <app-user> rm <base>/shared/storage/scheduler.paused`.
 - Only now remove the old unit: delete its supervisor or systemd file, then `sudo supervisorctl update`
   or `sudo systemctl disable <scheduler-unit> && sudo systemctl daemon-reload`.
 

@@ -42,6 +42,16 @@ PHP);
             'dropForeign' => ["\$table->dropForeign(['a']);", 'dropForeign'],
             'raw drop column' => ["DB::statement('ALTER TABLE t DROP COLUMN a');", 'raw-sql'],
             'raw rename column' => ["DB::statement('alter table t rename column a to b');", 'raw-sql'],
+            'dropSoftDeletes' => ["\$table->dropSoftDeletes();", 'dropColumn'],
+            'dropSoftDeletesTz' => ["\$table->dropSoftDeletesTz();", 'dropColumn'],
+            'dropTimestamps' => ["\$table->dropTimestamps();", 'dropColumn'],
+            'dropTimestampsTz' => ["\$table->dropTimestampsTz();", 'dropColumn'],
+            'dropMorphs' => ["\$table->dropMorphs('taggable');", 'dropColumn'],
+            'dropRememberToken' => ["\$table->dropRememberToken();", 'dropColumn'],
+            'static dropColumns' => ["Schema::dropColumns('t', ['a']);", 'dropColumn'],
+            'connection drop' => ["Schema::connection('pgsql')->drop('a');", 'drop'],
+            'connection dropIfExists' => ["Schema::connection(config('x.y'))->dropIfExists('a');", 'drop'],
+            'connection rename' => ["Schema::connection('pgsql')->rename('a', 'b');", 'rename'],
             'raw alter column' => ["DB::statement('ALTER TABLE t ALTER COLUMN a SET NOT NULL');", 'raw-sql'],
         ];
     }

@@ -122,6 +122,13 @@ PHP);
         $this->assertSame('db:seed --class=ASeeder --force', $log[3]);
     }
 
+    public function test_namespaced_seeder_class_survives_the_shell(): void
+    {
+        $result = $this->deploy(self::RECIPE, ['DK_SEEDERS' => 'Database\\Seeders\\RolesSeeder']);
+        $this->assertSame(0, $result['exit'], $result['output']);
+        $this->assertContains('db:seed --class=Database\\Seeders\\RolesSeeder --force', $this->artisanLog());
+    }
+
     public function test_failed_migrate_leaves_current_untouched(): void
     {
         $this->assertSame(0, $this->deploy(self::RECIPE)['exit']);

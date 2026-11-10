@@ -7,6 +7,7 @@ namespace DeployKit\Tests\Unit;
 use PHPUnit\Framework\TestCase;
 
 use function DeployKit\artisanCommand;
+use function DeployKit\seedCommand;
 
 final class ArtisanHelperTest extends TestCase
 {
@@ -25,6 +26,15 @@ final class ArtisanHelperTest extends TestCase
         $this->assertSame(
             'sudo -u app-x php /srv/app/current/artisan queue:restart',
             artisanCommand('/srv/app/current', 'queue:restart', 'app-x'),
+        );
+    }
+
+    public function test_seed_command_quotes_the_class(): void
+    {
+        $this->assertSame("db:seed --class='Database\\Seeders\\RolesSeeder' --force", seedCommand('Database\\Seeders\\RolesSeeder'));
+        $this->assertSame(
+            "sudo -u app-x php /srv/releases/1/artisan db:seed --class='Database\\Seeders\\X' --force",
+            artisanCommand('/srv/releases/1', seedCommand('Database\\Seeders\\X'), 'app-x'),
         );
     }
 }
