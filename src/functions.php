@@ -30,6 +30,43 @@ function artisan(string $command): string
 }
 
 /**
+ * artisan() for the `current` release: what runs after a rollback, when release_path no longer exists.
+ */
+function currentArtisan(string $command): string
+{
+    $user = \Deployer\get('dk_app_user');
+
+    return artisanCommand(
+        (string) \Deployer\get('current_path'),
+        $command,
+        $user === null || $user === '' ? null : (string) $user,
+        (string) \Deployer\get('bin/php'),
+    );
+}
+
+/**
+ * The curl probe for the health URL. The body is discarded, never printed. For an https URL with
+ * $resolveLocal the host is pinned to 127.0.0.1 (skipping DNS and the proxy; -k as the certificate
+ * may not match). Other schemes are fetched as they are.
+ */
+function healthCommand(string $url, bool $resolveLocal): string
+{
+    $line = 'curl -fsS --max-time 20 -o /dev/null';
+    $host = parse_url($url, PHP_URL_HOST);
+    if ($resolveLocal && str_starts_with(strtolower($url), 'https://') && is_string($host) && $host !== '') {
+        $line .= ' --resolve ' . $host . ':443:127.0.0.1 -k';
+    }
+
+    return $line . ' ' . escapeshellarg($url);
+}
+
+/** Shell command clearing the PHP-FPM pool's opcache through cachetool. */
+function cachetoolCommand(string $cachetool, string $socket): string
+{
+    return 'sudo ' . $cachetool . ' opcache:reset --fcgi=' . $socket;
+}
+
+/**
  * Migration names in `migrate:status --pending` output.
  *
  * Accepts bare names one per line and Laravel's framed table, where a pending row looks like

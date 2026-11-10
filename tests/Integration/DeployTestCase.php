@@ -71,8 +71,20 @@ abstract class DeployTestCase extends TestCase
      */
     protected function deploy(string $recipeFile, array $env = [], array $args = []): array
     {
+        return $this->runDep('deploy', $recipeFile, $env, $args);
+    }
+
+    /**
+     * Run any `dep` task for the recipe against the localhost host.
+     *
+     * @param array<string, string> $env
+     * @param list<string> $args extra dep arguments
+     * @return array{exit:int, output:string}
+     */
+    protected function runDep(string $task, string $recipeFile, array $env = [], array $args = []): array
+    {
         $process = new Process(
-            [PHP_BINARY, self::ROOT . '/vendor/bin/dep', 'deploy', '-f', $recipeFile, 'localhost', ...$args],
+            [PHP_BINARY, self::ROOT . '/vendor/bin/dep', $task, '-f', $recipeFile, 'localhost', ...$args],
             self::ROOT,
             array_merge([
                 'DK_BASE' => $this->basePath(),

@@ -10,7 +10,7 @@ final class LaravelRecipeTest extends DeployTestCase
 
     private function release(): string
     {
-        $current = realpath($this->basePath() . '/current');
+        $current = $this->currentTarget();
         $this->assertNotFalse($current);
         $this->assertSame(realpath($this->basePath() . '/releases'), dirname($current));
 
@@ -205,5 +205,111 @@ PHP);
             $this->assertSame(0, $result['exit'], $result['output']);
         }
         $this->assertCount(5, glob($this->basePath() . '/releases/*') ?: []);
+    }
+
+    /** Where `current` points now; PHP caches realpath() results, which goes stale as the link moves. */
+    private function currentTarget(): string|false
+    {
+        clearstatcache(true);
+
+        return realpath($this->basePath() . '/current');
+    }
+
+    private function lastLogLine(): string
+    {
+        $log = $this->artisanLog();
+
+        return end($log) ?: '';
+    }
+
+    private function releaseCount(): int
+    {
+        return count(glob($this->basePath() . '/releases/*') ?: []);
+    }
+
+    public function test_healthy_deploy_passes(): void
+    {
+        $result = $this->deploy(self::RECIPE);
+        $this->assertSame(0, $result['exit'], $result['output']);
+        $this->assertStringNotContainsString('ROLLED BACK', $result['output']);
+    }
+
+    public function test_failed_health_rolls_back(): void
+    {
+        $this->assertSame(0, $this->deploy(self::RECIPE)['exit']);
+        $first = $this->currentTarget();
+        $logged = count($this->artisanLog());
+
+        unlink($this->sourcePath() . '/public/up.txt');
+        $failed = $this->deploy(self::RECIPE);
+        $this->assertNotSame(0, $failed['exit']);
+        $this->assertSame($first, $this->currentTarget());
+        $this->assertStringContainsString('ROLLED BACK to ' . basename($first) . ': health check failed', $failed['output']);
+        $this->assertFileDoesNotExist($this->basePath() . '/.dep/deploy.lock');
+
+        $second = array_slice($this->artisanLog(), $logged);
+        $this->assertSame(2, count(array_keys($second, 'queue:restart', true)), 'once after the switch, once after the rollback');
+        $this->assertSame('queue:restart', end($second));
+
+        file_put_contents($this->sourcePath() . '/public/up.txt', 'ok');
+        $third = $this->deploy(self::RECIPE);
+        $this->assertSame(0, $third['exit'], $third['output']);
+        $this->assertNotSame($first, $this->currentTarget(), $third['output']);
+    }
+
+    public function test_bad_release_is_not_a_later_rollback_target(): void
+    {
+        $this->assertSame(0, $this->deploy(self::RECIPE)['exit']);
+        $first = basename((string) $this->currentTarget());
+
+        unlink($this->sourcePath() . '/public/up.txt');
+        $this->assertNotSame(0, $this->deploy(self::RECIPE)['exit']);
+        $this->assertFileExists($this->basePath() . '/releases/' . ($first + 1) . '/BAD_RELEASE');
+
+        // Release 3 fails too: the bad release 2 must be skipped, so the target is release 1.
+        $failed = $this->deploy(self::RECIPE);
+        $this->assertNotSame(0, $failed['exit']);
+        $this->assertSame(realpath($this->basePath() . '/releases/' . $first), $this->currentTarget());
+        $this->assertStringContainsString('ROLLED BACK to ' . $first . ':', $failed['output']);
+        $this->assertSame(3, $this->releaseCount());
+    }
+
+    public function test_failed_health_on_first_deploy_changes_nothing(): void
+    {
+        unlink($this->sourcePath() . '/public/up.txt');
+        $result = $this->deploy(self::RECIPE);
+        $this->assertNotSame(0, $result['exit']);
+        $this->assertStringContainsString('Health check failed and there is no previous release to roll back to', $result['output']);
+        $this->assertStringNotContainsString('ROLLED BACK', $result['output']);
+        $this->assertSame(1, $this->releaseCount());
+        $this->assertSame(realpath($this->basePath() . '/releases/1'), $this->currentTarget());
+        $this->assertFileDoesNotExist($this->basePath() . '/.dep/deploy.lock');
+    }
+
+    public function test_manual_rollback_restarts_queue(): void
+    {
+        $this->assertSame(0, $this->deploy(self::RECIPE)['exit']);
+        $first = $this->currentTarget();
+        $this->assertSame(0, $this->deploy(self::RECIPE)['exit']);
+
+        $result = $this->runDep('rollback', self::RECIPE);
+        $this->assertSame(0, $result['exit'], $result['output']);
+        $this->assertSame($first, $this->currentTarget());
+        $this->assertSame('queue:restart', $this->lastLogLine());
+    }
+
+    public function test_opcache_clear_is_not_attempted_without_a_socket(): void
+    {
+        $result = $this->deploy(self::RECIPE, [], ['-vvv']);
+        $this->assertSame(0, $result['exit'], $result['output']);
+        $this->assertStringContainsString('config:cache', $result['output'], 'verbose output must show commands');
+        $this->assertStringNotContainsString('opcache:reset', $result['output']);
+    }
+
+    public function test_lock_taken_after_unlock_is_not_released_by_a_late_failure(): void
+    {
+        $result = $this->deploy(self::RECIPE, ['DK_AFTER_UNLOCK_FAILS' => '1']);
+        $this->assertNotSame(0, $result['exit']);
+        $this->assertFileExists($this->basePath() . '/.dep/deploy.lock');
     }
 }

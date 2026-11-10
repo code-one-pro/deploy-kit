@@ -31,6 +31,19 @@ if (($seeders = dkEnvList('DK_SEEDERS')) !== null) {
     set('dk_seeders', $seeders);
 }
 
+set('dk_health_url', 'file://{{deploy_path}}/current/public/up.txt');
+if (($socket = getenv('DK_FPM_SOCKET')) !== false && $socket !== '') {
+    set('dk_fpm_socket', $socket);
+}
+if (getenv('DK_AFTER_UNLOCK_FAILS') !== false) {
+    // Simulates a concurrent deploy taking the lock, then a failure after our own unlock.
+    task('fixture:late-failure', function () {
+        file_put_contents(get('deploy_path') . '/.dep/deploy.lock', 'someone');
+        throw new \RuntimeException('failure after unlock');
+    });
+    after('deploy:unlock', 'fixture:late-failure');
+}
+
 // Deployer resolves these to absolute paths that may contain spaces on a workstation.
 set('bin/php', 'php');
 set('bin/composer', 'composer');

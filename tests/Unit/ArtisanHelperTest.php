@@ -19,4 +19,12 @@ final class ArtisanHelperTest extends TestCase
         $this->assertSame('/usr/bin/php8.4 /srv/releases/1/artisan migrate --force', $without);
         $this->assertStringNotContainsString('sudo', $without);
     }
+
+    public function test_current_artisan_runs_from_the_current_path(): void
+    {
+        $this->assertSame(
+            'sudo -u app-x php /srv/app/current/artisan queue:restart',
+            artisanCommand('/srv/app/current', 'queue:restart', 'app-x'),
+        );
+    }
 }

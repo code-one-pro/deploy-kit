@@ -22,6 +22,10 @@ set('dk_source_path', null);
 set('dk_upload_paths', null);
 set('dk_upload_excludes', []);
 set('dk_app_user', null);
+set('dk_health_url', null);
+set('dk_health_resolve_local', true);
+set('dk_fpm_socket', null);
+set('dk_cachetool', '/usr/local/bin/cachetool');
 
 set('shared_dirs', ['storage']);
 set('shared_files', ['.env']);
