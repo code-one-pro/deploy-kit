@@ -69,16 +69,18 @@ final class LaravelRecipeTest extends DeployTestCase
         ];
         foreach ($files as $file) {
             @mkdir(dirname($src . '/' . $file), 0755, true);
-            file_put_contents($src . '/' . $file, 'local');
+            file_put_contents($src . '/' . $file, 'workstation-only');
         }
 
         $result = $this->deploy(self::RECIPE, ['DK_NO_VENDORS' => '1']);
         $this->assertSame(0, $result['exit'], $result['output']);
 
         $release = $this->release();
-        foreach (['.env.e2e', 'node_modules', '.git', 'vendor', 'bootstrap/cache/config.php', 'public/hot', 'database/database.sqlite', 'database/database.sqlite-journal'] as $entry) {
+        foreach (['.env.e2e', 'node_modules', '.git', 'vendor', 'public/hot', 'database/database.sqlite', 'database/database.sqlite-journal'] as $entry) {
             $this->assertFalse(file_exists($release . '/' . $entry) || is_link($release . '/' . $entry), $entry . ' was uploaded');
         }
+        // config:cache writes its own bootstrap/cache/config.php in the release; the local one must not arrive.
+        $this->assertStringNotContainsString('workstation-only', (string) @file_get_contents($release . '/bootstrap/cache/config.php'));
         $this->assertFileDoesNotExist($this->basePath() . '/shared/storage/x');
         $this->assertStringNotContainsString('topsecret', (string) @file_get_contents($this->basePath() . '/shared/.env'));
         $this->assertFileExists($release . '/artisan');
