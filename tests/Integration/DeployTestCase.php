@@ -36,13 +36,29 @@ abstract class DeployTestCase extends TestCase
         return $this->base ??= $this->makeTempDir('dk-base');
     }
 
-    /** A per-test copy of tests/fixtures/app that tests may modify freely. */
+    /** Name of the directory under tests/fixtures that sourcePath() copies. */
+    protected function fixtureName(): string
+    {
+        return 'app';
+    }
+
+    /** The release `current` points to, or false. */
+    protected function currentTarget(): string|false
+    {
+        clearstatcache(true);
+
+        return realpath($this->basePath() . '/current');
+    }
+
+    /** A per-test copy of the fixture (tests/fixtures/{fixtureName()}) that tests may modify freely. */
     protected function sourcePath(): string
     {
         if ($this->source === null) {
             $this->source = $this->makeTempDir('dk-src');
-            (new Process(['cp', '-R', __DIR__ . '/../fixtures/app/.', $this->source]))->mustRun();
-            @chmod($this->source . '/artisan', 0755);
+            (new Process(['cp', '-R', __DIR__ . '/../fixtures/' . $this->fixtureName() . '/.', $this->source]))->mustRun();
+            if (is_file($this->source . '/artisan')) {
+                chmod($this->source . '/artisan', 0755);
+            }
         }
 
         return $this->source;

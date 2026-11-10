@@ -208,13 +208,6 @@ PHP);
     }
 
     /** Where `current` points now; PHP caches realpath() results, which goes stale as the link moves. */
-    private function currentTarget(): string|false
-    {
-        clearstatcache(true);
-
-        return realpath($this->basePath() . '/current');
-    }
-
     private function lastLogLine(): string
     {
         $log = $this->artisanLog();
