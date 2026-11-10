@@ -124,18 +124,48 @@ Back out: `sudo rm /etc/logrotate.d/<short-name>-scheduler`.
 The live tree keeps working during this step. `mv` inside one file system keeps owners, modes and
 ACLs. A symlink is left at the old place, so the old code still finds both.
 
-Command:
+Between each `mv` and its `ln -s` the old code cannot find that item, so a request in those few
+seconds can fail: this is the short pause the move accepts. Run each command on its own, and run its
+check before the next one. Do not paste the block at once: if one command fails, stop there.
+
+`storage` belongs to `<app-user>`, and moving a directory to another parent needs write access to the
+directory itself, so `deploy` cannot move it: use `sudo mv` (it keeps owners, modes and ACLs too).
 
 ```
 cd <base>
 mkdir releases shared
+```
+
+Check: `ls -ld releases shared` lists both, owned by `deploy`.
+
+```
 mv .env shared/.env
-mv storage shared/storage
+```
+
+Check: `test -s shared/.env && echo moved` prints `moved` (it never prints the contents).
+
+```
 ln -s shared/.env .env
+```
+
+Check: `readlink .env` prints `shared/.env`.
+
+```
+sudo mv storage shared/storage
+```
+
+Check: `stat -c '%U:%G %a %n' shared/storage` shows the owner and mode from step 1.
+
+```
 ln -s shared/storage storage
 ```
 
-Check:
+Check: `readlink storage` prints `shared/storage`.
+
+The deploys check this layout: `dk:shared:check` stops a deploy, before anything is created, when
+`shared/.env` is missing or empty or `shared/storage` is missing.
+
+Then check the whole step:
 
 ```
 stat -c '%U:%G %a %n' shared/.env shared/storage shared/storage/*.key
@@ -155,7 +185,7 @@ Back out:
 cd <base>
 rm .env storage
 mv shared/.env .env
-mv shared/storage storage
+sudo mv shared/storage storage
 sudo rm -rf shared releases
 ```
 

@@ -21,8 +21,31 @@ set('dk_queue', true);
 set('dk_composer_options', '--no-dev --optimize-autoloader --no-interaction --no-progress');
 set('dk_storage_link', true);
 set('dk_verify_view_path', true);
+set('dk_require_shared', true);
 
 option('allow-breaking', null, InputOption::VALUE_NONE, 'Continue when pending migrations may break the running code.');
+
+/*
+ * deploy:shared would quietly create an empty shared/.env and shared/storage: a deploy would then go live
+ * with no configuration and no uploads. The contents of .env are never read: `test -s` only checks size.
+ */
+desc('Stop when shared/.env or shared/storage is missing');
+task('dk:shared:check', function () {
+    if (! get('dk_require_shared')) {
+        return;
+    }
+    $missing = [];
+    if (! test('[ -s {{deploy_path}}/shared/.env ]')) {
+        $missing[] = 'shared/.env is missing or empty';
+    }
+    if (! test('[ -d {{deploy_path}}/shared/storage ]')) {
+        $missing[] = 'shared/storage is missing';
+    }
+    if ($missing !== []) {
+        throw new \RuntimeException(implode('; ', $missing) . ' in ' . get('deploy_path') . '. Move the live .env and storage there first '
+            . '(docs/cutover-runbook.md, step 3); the deploy stopped so it does not go live without them.');
+    }
+});
 
 /*
  * Done as the SSH user, not through artisan: public/ belongs to `deploy`. The target may not exist yet;
@@ -138,6 +161,7 @@ task('deploy', [
     'deploy:info',
     'deploy:setup',
     'deploy:lock',
+    'dk:shared:check',
     'deploy:release',
     'dk:upload',
     'deploy:shared',

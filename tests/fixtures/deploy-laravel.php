@@ -31,6 +31,8 @@ if (($seeders = dkEnvList('DK_SEEDERS')) !== null) {
     set('dk_seeders', $seeders);
 }
 
+// The shared-state guard has its own tests; elsewhere a fresh temp base has no shared/ yet.
+set('dk_require_shared', getenv('DK_REQUIRE_SHARED') === '1');
 if (getenv('DK_VERIFY_VIEW_PATH') === '0') {
     set('dk_verify_view_path', false);
 }

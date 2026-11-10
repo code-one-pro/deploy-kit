@@ -354,6 +354,69 @@ PHP);
         $this->assertFalse(is_link($this->basePath() . '/release'));
     }
 
+    /** Prepare shared/ the way the runbook's step 3 leaves it. */
+    private function prepareShared(bool $env = true, bool $envHasContent = true, bool $storage = true): void
+    {
+        $shared = $this->basePath() . '/shared';
+        @mkdir($shared, 0755, true);
+        if ($env) {
+            file_put_contents($shared . '/.env', $envHasContent ? "APP_ENV=production\n" : '');
+        }
+        if ($storage) {
+            @mkdir($shared . '/storage', 0755, true);
+        }
+    }
+
+    /** @return array<string, array{bool, bool, bool, string}> */
+    public static function missingSharedState(): array
+    {
+        return [
+            'missing .env' => [false, true, true, 'shared/.env is missing or empty'],
+            'empty .env' => [true, false, true, 'shared/.env is missing or empty'],
+            'missing storage' => [true, true, false, 'shared/storage is missing'],
+        ];
+    }
+
+    #[\PHPUnit\Framework\Attributes\DataProvider('missingSharedState')]
+    public function test_missing_shared_state_stops_the_deploy(bool $env, bool $content, bool $storage, string $message): void
+    {
+        // A live release first, then the shared state goes missing.
+        $this->prepareShared();
+        $this->assertSame(0, $this->deploy(self::RECIPE, ['DK_REQUIRE_SHARED' => '1'])['exit']);
+        $before = readlink($this->basePath() . '/current');
+        $logged = count($this->artisanLog());
+
+        $shared = $this->basePath() . '/shared';
+        if (! $env) {
+            unlink($shared . '/.env');
+        } elseif (! $content) {
+            file_put_contents($shared . '/.env', '');
+        }
+        if (! $storage) {
+            (new \Symfony\Component\Process\Process(['rm', '-rf', $shared . '/storage']))->mustRun();
+        }
+
+        $result = $this->deploy(self::RECIPE, ['DK_REQUIRE_SHARED' => '1']);
+        $this->assertNotSame(0, $result['exit']);
+        $this->assertStringContainsString($message, $result['output']);
+        $this->assertStringContainsString('docs/cutover-runbook.md', $result['output']);
+        $this->assertStringNotContainsString('APP_ENV', $result['output']);
+        $this->assertSame($before, readlink($this->basePath() . '/current'));
+        $this->assertFileDoesNotExist($this->basePath() . '/.dep/deploy.lock');
+        $this->assertSame($logged, count($this->artisanLog()), 'no artisan step ran');
+        $this->assertCount(1, glob($this->basePath() . '/releases/*') ?: [], 'no release was created');
+        if (! $storage) {
+            $this->assertDirectoryDoesNotExist($shared . '/storage', 'deploy:shared must not create an empty storage');
+        }
+    }
+
+    public function test_present_shared_state_lets_the_deploy_proceed(): void
+    {
+        $this->prepareShared();
+        $result = $this->deploy(self::RECIPE, ['DK_REQUIRE_SHARED' => '1']);
+        $this->assertSame(0, $result['exit'], $result['output']);
+    }
+
     /** Where `current` points now; PHP caches realpath() results, which goes stale as the link moves. */
     private function lastLogLine(): string
     {
