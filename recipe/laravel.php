@@ -11,6 +11,7 @@ use function DeployKit\artisan;
 use function DeployKit\cachedViewPathCommand;
 use function DeployKit\releaseViewPath;
 use function DeployKit\pendingMigrationNames;
+use function DeployKit\phpVersionMeets;
 use function DeployKit\seedCommand;
 
 require __DIR__ . '/common.php';
@@ -22,8 +23,26 @@ set('dk_composer_options', '--no-dev --optimize-autoloader --no-interaction --no
 set('dk_storage_link', true);
 set('dk_verify_view_path', true);
 set('dk_require_shared', true);
+set('dk_php_minimum', '8.4.27'); // 8.4.27 fixes a security vulnerability; null skips the check
 
 option('allow-breaking', null, InputOption::VALUE_NONE, 'Continue when pending migrations may break the running code.');
+
+/*
+ * Checks the PHP the deploy runs artisan with ({{bin/php}}). PHP-FPM is a separate package of the same
+ * version on a normal install, but it is not asked here.
+ */
+desc('Stop when the server\'s PHP is older than dk_php_minimum');
+task('dk:php:check', function () {
+    $minimum = get('dk_php_minimum');
+    if (! is_string($minimum) || $minimum === '') {
+        return;
+    }
+    $reported = trim(run('{{bin/php}} -r ' . escapeshellarg('echo PHP_VERSION;')));
+    if (! phpVersionMeets($reported, $minimum)) {
+        throw new \RuntimeException("The server's PHP is $reported; this deploy needs $minimum or later. "
+            . 'Update PHP on the server, or change dk_php_minimum; the deploy stopped before creating a release.');
+    }
+});
 
 /*
  * deploy:shared would quietly create an empty shared/.env and shared/storage: a deploy would then go live
@@ -168,6 +187,7 @@ task('deploy', [
     'deploy:info',
     'deploy:setup',
     'deploy:lock',
+    'dk:php:check',
     'dk:shared:check',
     'deploy:release',
     'dk:upload',

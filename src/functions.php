@@ -47,6 +47,19 @@ function artisan(string $command, array $env = []): string
     );
 }
 
+/**
+ * Whether the PHP version a server reported (PHP_VERSION, e.g. "8.4.27" or "8.4.27-1+ubuntu") is at
+ * least $minimum. A version that cannot be read does not meet any minimum.
+ */
+function phpVersionMeets(string $reported, string $minimum): bool
+{
+    if (preg_match('/^\d+\.\d+\.\d+/', trim($reported), $m) !== 1) {
+        return false;
+    }
+
+    return version_compare($m[0], $minimum, '>=');
+}
+
 /** Where a release keeps its own compiled Blade views. */
 function releaseViewPath(string $releasePath): string
 {

@@ -117,6 +117,7 @@ Set them with `set('key', value)` in `deploy.php`.
 | `dk_composer_options` | `--no-dev --optimize-autoloader --no-interaction --no-progress` | Options for `composer install` (Laravel only). |
 | `dk_storage_link` | `true` (Laravel) | Link `public/storage` in each release to `<base>/shared/storage/app/public`, as `storage:link` would. |
 | `dk_require_shared` | `true` (Laravel) | Stop the deploy, before anything is created, when `<base>/shared/.env` is missing or empty or `<base>/shared/storage` is missing (Deployer would create them empty). |
+| `dk_php_minimum` | `'8.4.27'` (Laravel) | Stop the deploy, before a release is created, when the server's PHP (`bin/php`, the one artisan runs with) is older. `null` skips the check. PHP-FPM is not asked; keep its package at the same version. |
 | `dk_verify_view_path` | `true` (Laravel) | After `config:cache`, stop the deploy when `view.compiled` is not inside the release (see "Compiled views"). |
 | `dk_assets_dir` | `assets` | Directory of hashed assets to carry over (static only). |
 | `keep_releases` | `5` | Releases kept on the server: the live one plus the newest releases that passed a health check (see "Old releases"). |
@@ -133,7 +134,7 @@ These are never uploaded, whatever you set: `/.env`, `/.env.*`, `/storage/`, `/v
 Laravel (`dep deploy`):
 
 ```
-deploy:info, deploy:setup, deploy:lock, dk:shared:check, deploy:release, dk:upload, deploy:shared,
+deploy:info, deploy:setup, deploy:lock, dk:php:check, dk:shared:check, deploy:release, dk:upload, deploy:shared,
 dk:storage:link, dk:vendors, dk:handover, dk:preflight, dk:migrations:check, dk:migrate, dk:seed, dk:cache,
 deploy:symlink, dk:queue:restart, dk:health, dk:release:mark-live, dk:opcache:clear,
 deploy:unlock, dk:cleanup

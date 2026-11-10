@@ -36,6 +36,9 @@ set('dk_require_shared', getenv('DK_REQUIRE_SHARED') === '1');
 if (getenv('DK_VERIFY_VIEW_PATH') === '0') {
     set('dk_verify_view_path', false);
 }
+if (($minimum = getenv('DK_PHP_MINIMUM')) !== false) {
+    set('dk_php_minimum', $minimum === '' ? null : $minimum);
+}
 if (getenv('DK_STORAGE_LINK') === '0') {
     set('dk_storage_link', false);
 }

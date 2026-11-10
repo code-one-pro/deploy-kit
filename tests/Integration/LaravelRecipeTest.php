@@ -34,6 +34,24 @@ final class LaravelRecipeTest extends DeployTestCase
         }
     }
 
+    public function test_php_older_than_the_minimum_stops_the_deploy_before_a_release_exists(): void
+    {
+        $result = $this->deploy(self::RECIPE, ['DK_PHP_MINIMUM' => '99.0.0']);
+
+        $this->assertNotSame(0, $result['exit']);
+        $this->assertStringContainsString('this deploy needs 99.0.0 or later', $result['output']);
+        $this->assertSame([], glob($this->basePath() . '/releases/*') ?: []);
+        $this->assertFileDoesNotExist($this->basePath() . '/.dep/deploy.lock');
+        $this->assertSame([], $this->artisanLog());
+    }
+
+    public function test_php_check_is_skipped_without_a_minimum(): void
+    {
+        $result = $this->deploy(self::RECIPE, ['DK_PHP_MINIMUM' => '']);
+
+        $this->assertSame(0, $result['exit'], $result['output']);
+    }
+
     public function test_never_uploads_secrets_or_state(): void
     {
         $src = $this->sourcePath();
