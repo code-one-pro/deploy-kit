@@ -506,8 +506,31 @@ Read from the server on 2026-11-10 (read-only). Nothing here is a guess unless i
 | Branch and local gates | branch `master`. The app's `deploy.sh` checks the branch and runs `npm ci` and `npm run build`. It runs no tests. |
 | Preflight command, seeders | none |
 | Left behind at the base path after the move | a stale `sqlite_vec.db` from April 2026 in the code root (the live one is in `storage/app/`), `.superpowers/`, `.DS_Store`, `docs/`, `tests/`: all part of the old tree, kept in the backup of step 3 and not uploaded again |
-| Started / finished | |
+| Started / finished | 2026-11-11 09:47 / 10:26 server time (CET). `old-tree/` (59 MB) is still at the base path: delete it after a few quiet days with `sudo rm -rf <base>/old-tree`. |
 
 Differences from the `hetzner-server` repo and the design: the group of the code tree and of `storage`
 is still `www-data` (access is by owner and ACL, so nothing depends on it); `storage` and the Passport
 keys carry ACLs; there is no scheduler of any kind.
+
+### What the Open Brain move showed (2026-11-11)
+
+Proven on the server: 348 requests during six deploys, all 200; `resolve_root_symlink` makes PHP use the
+real release path (the opcache held scripts of one release only after each deploy); rollback, twice;
+compiled views per release (a changed Blade page showed the old markup after a rollback, and
+`shared/storage/framework/views` did not grow); cleanup across the two accounts (five releases left
+after the sixth, exit 0); the scheduler heartbeat moved through every deploy; an uploaded image answered
+200. Not proven: a long job in progress during a deploy.
+
+Things to know for the next app:
+
+- Deployer numbers releases 1, 2, 3, not by timestamp.
+- After `dep rollback`, Deployer marks the release you left as bad, and the next deploy's cleanup deletes
+  it. To go forward again, deploy again.
+- The first deploy (step 4) is marked live although Caddy did not serve it yet. Do the second deploy of
+  step 5 before you rely on a rollback.
+- The opcache is shared by every pool, so `dk:opcache:clear` empties it for every app on the server.
+  The other apps compile their scripts again on their next requests. No request fails.
+- The kit repository is private: in the app's `composer.json` set `preferred-install` to `source` for
+  `transistorized-cmd/deploy-kit`, or the zip download answers 404.
+- Opcache on this server is 256 MB, 30,000 files and a 32 MB strings buffer since 2026-11-11. The
+  strings buffer was full at the default 8 MB.

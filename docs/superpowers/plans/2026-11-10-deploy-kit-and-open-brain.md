@@ -224,6 +224,8 @@ tests/fixtures/deploy-laravel.php, tests/fixtures/deploy-static.php
 > - Task 11 adds: a sixth deploy exits 0 and leaves five releases; a `storage/` image URL answers 200.
 > - A second deploy after the Caddy switch is needed before a rollback target exists (only releases that passed a health check under the kit are targets).
 
+> **Status 2026-11-11:** Tasks 8 to 11 are done. Open Brain runs on the new layout; results are in `docs/cutover-runbook.md` ("What the Open Brain move showed"). Verdict for Belenos: go. Left: delete `old-tree/` on the server after a few quiet days.
+
 ### Task 8: Open Brain: read the server (read-only, JL's go-ahead)
 
 **Files:**
