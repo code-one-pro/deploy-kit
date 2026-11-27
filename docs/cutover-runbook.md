@@ -530,8 +530,9 @@ Things to know for the next app:
   step 5 before you rely on a rollback.
 - The opcache is shared by every pool, so `dk:opcache:clear` empties it for every app on the server.
   The other apps compile their scripts again on their next requests. No request fails.
-- The kit repository is private: in the app's `composer.json` set `preferred-install` to `source` for
-  `transistorized-cmd/deploy-kit`, or the zip download answers 404.
+- The kit repository was private until 2026-11-27, which needed `preferred-install: source` in the app's
+  `composer.json` and broke an app's CI (GitHub Actions cannot read another private repository). It is
+  public now, at `code-one-pro/deploy-kit` (the old `transistorized-cmd/deploy-kit` URL redirects).
 - Opcache on this server is 256 MB, 30,000 files and a 32 MB strings buffer since 2026-11-11. The
   strings buffer was full at the default 8 MB.
 
