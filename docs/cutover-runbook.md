@@ -534,3 +534,61 @@ Things to know for the next app:
   `transistorized-cmd/deploy-kit`, or the zip download answers 404.
 - Opcache on this server is 256 MB, 30,000 files and a 32 MB strings buffer since 2026-11-11. The
   strings buffer was full at the default 8 MB.
+
+## Worksheet: Code One Pro API
+
+Read from the server on 2026-11-27 (read-only), moved the same day. Only the API moved; the SPA in
+`front/dist` keeps its own rsync deploy (`bug-tracker-front/scripts/deploy.sh`).
+
+| Item | Value |
+|---|---|
+| App | Code One Pro API (Laravel 13.40, Passport, MCP) |
+| Domain | `cop.pellicer.dev` (public, behind Cloudflare) and the tailnet site `ubuntu-8gb-nbg1-1.giraffa-velociraptor.ts.net`; both serve the API and the SPA from the same paths |
+| Short name (letters, digits, hyphen only; no dot) | `cop` (cron file `/etc/cron.d/cop-scheduler`) |
+| Base path | `/var/www/cop.pellicer.dev/api` (65 MB). The SPA lives beside it in `/var/www/cop.pellicer.dev/front/dist` |
+| Base path owner and mode | `deploy:www-data` 755; not a git clone |
+| App account | `app-cop` (its group has no other members) |
+| PHP | CLI and FPM both 8.4.28 |
+| PHP-FPM socket | `/run/php/php8.4-fpm-app-cop.sock` (pool `app-cop`, `pm = ondemand`, 4 children) |
+| Worker unit | **systemd** `cop-queue-worker`, 1 process, `php artisan queue:work database --sleep=3 --tries=3 --max-time=3600` as `app-cop`, `Restart=always`, log `/var/log/cop/queue-worker.log`, drop-in `cop-queue-worker.service.d/ir-user.conf`. `ExecStart` is relative, so only `WorkingDirectory` changed |
+| Scheduler unit today | **systemd** `cop-scheduler` (`schedule:work`), log `/var/log/cop/scheduler.log`. Three tasks: `cop:security-digest` daily 06:00, `cop:security-review` Mondays 06:00, `cop:intakes:abandon` daily 02:30 |
+| Database | PostgreSQL `codeonepro` on `127.0.0.1:5432` |
+| Health URL | `https://cop.pellicer.dev/.well-known/oauth-authorization-server`. Not `/up`: the public site does not route `/up` to PHP, so the SPA catch-all answers 200 even with PHP down. Caddy's `@not_cloudflare` matcher lets 127.0.0.0/8 through, so the kit's loopback probe works |
+| Caddy site blocks today | Two blocks, 11 `handle` sections between them, each `root * <base>/public` + plain `php_fastcgi`. All 11 changed to `current/public` + `resolve_root_symlink`; the SPA handles were left alone |
+| Files that name the old path | `/etc/caddy/Caddyfile` (11 roots); `/etc/systemd/system/cop-queue-worker.service` and `cop-scheduler.service` (`WorkingDirectory`); `/etc/php/8.4/fpm/pool.d/app-cop.conf` (a comment only). No backup config, sudoers, polkit or logrotate |
+| Backups | **none before the move**: no conf.d file and no cron line. Added `/home/deploy/backups/conf.d/cop.conf` (GCS `gs://database_backups_jlpellicerm/cop`, config `obp`) and two cron lines at minute 16; a dump was taken before step 3 |
+| `.env` owner and mode | `deploy:app-cop` 640 |
+| `storage` owner and mode | `app-cop:app-cop` 775 with an ACL (`deploy` rwx, `caddy` x; default ACL for `deploy` and `app-cop`) |
+| Passport keys | yes, `app-cop:app-cop` **600 with an ACL whose mask is `---`** (a past `chmod 600`). Never `chmod` them. The old deploy script chmodded them on every deploy; the kit never touches `shared/storage` |
+| umask of `deploy` and of `app-cop` | `0002` and `0002` |
+| `deploy` in the `app-cop` group | no |
+| sudo as the app account | `env` and `find` (from `/`) work |
+| Has scheduled tasks | yes; step 7 applies |
+| Branch and local gates | branch `main`. `scripts/deploy.sh` keeps its gates (main, clean tree, `run-tests-safely.sh --serial`), writes `version.json`, runs `dep deploy`, then `deploy/scripts/check-permissions.sh` against `current` and a public health check through Cloudflare |
+| Preflight command, seeders | no preflight. `scripts/deploy.sh --seed` sets `COP_SEED=1`, and `deploy.php` then lists `Database\Seeders\DatabaseSeeder` (idempotent) |
+| Started / finished | 2026-11-27 17:05 / 17:20 server time (CET). `old-tree/` (64 MB) is still at the base path: delete it after a few quiet days with `sudo rm -rf <base>/old-tree`. Saved copies: `/etc/caddy/Caddyfile.pre-kit-cop`, `/root/cop-queue-worker.service.pre-kit`, `/root/cop-scheduler.service.pre-kit`, `/home/deploy/backups/crontab.pre-cop`, `conf.d/cop.conf.pre-kit` |
+
+### What the Code One Pro move showed (2026-11-27)
+
+Proven on the server: 142 requests during five deploys and a rollback, all 200 on the health path and
+401 on an API path without a token; the opcache held one release only; rollback to release 2 and forward
+again; cleanup left five releases, every deploy exit 0; the shared compiled-views count did not grow
+(41 before and after); the scheduler heartbeat moved through every deploy and the pause flag stopped it;
+the worker restarted into the new release each time (`queue:restart`, then systemd `Restart=always`).
+Not proven: a long job in progress during a deploy. Not applicable: uploaded files (`storage/app/public`
+is empty and the public site does not route `/storage`).
+
+Things to know for the next app:
+
+- **Keep the request loop under the app's rate limits.** The first loop hammered a throttled endpoint
+  from 127.0.0.1, the same address as the kit's loopback probe; the probe got 429 and the kit rolled back
+  twice. That was the safety net working, not a fault, but read the app's `RateLimiter::for` limits
+  first and pace the loop well below them (here 60 per minute per IP: one request every 2 s).
+- In step 10, `pkill -f <pattern>` also matches the SSH command that runs it when the pattern appears
+  anywhere in that command. Stop a loop in its own SSH call.
+- A systemd worker with `Restart=always` needs no change besides `WorkingDirectory`: `queue:restart`
+  makes it exit, and systemd starts it again in the release `current` points to.
+- An app check that `stat`s `.env` or `storage/` must follow links (`stat -L`): in a release they are
+  symlinks into `shared/`, and a link's own mode is 777.
+- Check that the app's database is in the backup jobs before step 3. Code One Pro's was not.
+- Compare the `hetzner-server` copy with the server before step 9; commit any older drift separately.
